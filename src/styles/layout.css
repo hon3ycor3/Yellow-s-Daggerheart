@@ -1,0 +1,153 @@
+/*  This is your layout playground. Every section has a named grid-area, 
+    so you can reorder sections—or uncomment the 600px 2-column preset at the bottom—without touching index.html. 
+*/
+
+@layer layout {
+  /* Frozen topbar chrome */
+  .sticky-chrome {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-topbar);
+    margin: 0 calc(var(--space-5) * -1) var(--space-4);
+    padding: var(--space-4) var(--space-5) var(--space-3);
+    background-color: var(--bg-canvas);
+    border-bottom: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-topbar);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .topbar h1 {
+    font-size: var(--text-lg);
+    letter-spacing: 0.02em;
+  }
+
+  .topbar-badges {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .party-switcher {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 5px;
+  }
+
+  #sheet-selector {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .section-nav {
+    display: flex;
+    gap: 5px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  /* Reusable form grids */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  /*
+   * Main Sheet Layout Grid
+   * Reorder sections by moving their area names below (no HTML edits required).
+   */
+  #sheet {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
+    grid-template-areas:
+      "roll"
+      "identity"
+      "armor"
+      "vitals"
+      "traits"
+      "experiences"
+      "weapons"
+      "features"
+      "heritage"
+      "cards"
+      "inventory"
+      "gold";
+  }
+
+  #sec-roll {
+    grid-area: roll;
+  }
+  #sec-identity {
+    grid-area: identity;
+  }
+  #sec-vitals {
+    grid-area: vitals;
+  }
+  #sec-armor {
+    grid-area: armor;
+  }
+  #sec-traits {
+    grid-area: traits;
+  }
+  #sec-features {
+    grid-area: features;
+  }
+  #sec-heritage {
+    grid-area: heritage;
+  }
+  #sec-experiences {
+    grid-area: experiences;
+  }
+  #sec-weapons {
+    grid-area: weapons;
+  }
+  #sec-cards {
+    grid-area: cards;
+  }
+  #sec-inventory {
+    grid-area: inventory;
+  }
+  #sec-gold {
+    grid-area: gold;
+  }
+
+  /*
+   * Optional 2-column preset for your 600px popover width.
+   * Uncomment this block whenever you want to experiment with side-by-side cards:
+   *
+   * @media (min-width: 540px) {
+   *   #sheet {
+   *     grid-template-columns: repeat(2, minmax(0, 1fr));
+   *     grid-template-areas:
+   *       "roll        roll"
+   *       "identity    vitals"
+   *       "armor       traits"
+   *       "features    features"
+   *       "heritage    experiences"
+   *       "weapons     weapons"
+   *       "cards       cards"
+   *       "inventory   gold";
+   *   }
+   * }
+   */
+}

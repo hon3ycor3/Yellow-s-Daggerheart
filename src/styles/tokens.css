@@ -1,0 +1,128 @@
+/*
+Every hardcoded hex color, spacing step, font size, and Domain color now lives here. 
+Changing --accent or --bg-surface re-themes the entire extension immediately.
+*/
+
+@layer tokens {
+  :root {
+    --z-scrollbar: 30;
+
+    /* Floating overlay scrollbar */
+    --scrollbar-width: 6px;
+    --scrollbar-thumb: rgba(161, 161, 170, 0.55);
+    --scrollbar-thumb-hover: rgba(167, 139, 250, 0.9);
+    --scrollbar-idle-opacity: 0; /* Set to 0.25 if you want a faint always-visible thumb */
+
+    /* Typography */
+    --font-sans:
+      "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-display: var(--font-sans);
+    --text-xs: 0.68rem;
+    --text-sm: 0.75rem;
+    --text-md: 0.82rem;
+    --text-base: 13px;
+    --text-lg: 0.96rem;
+
+    /* Spacing scale */
+    --space-1: 4px;
+    --space-2: 6px;
+    --space-3: 8px;
+    --space-4: 10px;
+    --space-5: 12px;
+    --space-6: 16px;
+
+    /* Radii & borders */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 10px;
+    --radius-pill: 999px;
+
+    /* Core dark theme palette */
+    --bg-canvas: #1d293d;
+    --bg-surface: #314158;
+    --bg-elevated: #45556c;
+    --border-subtle: #62748e;
+    --border-strong: #90a1b9;
+    --border-muted: #45556c;
+
+    --text-primary: #f4f4f5;
+    --text-secondary: #d4d4d8;
+    --text-muted: #a1a1aa;
+
+    /* Primary & semantic accents */
+    --accent: #7c3aed;
+    --accent-bg: #5b21b6;
+    --accent-bg-hover: #6d28d9;
+    --accent-border: #a78bfa;
+    --accent-soft: #c4b5fd;
+    --accent-text: #f5f3ff;
+
+    --success-bg: #14532d;
+    --success-border: #4ade80;
+    --success-text: #86efac;
+
+    --warning-bg: #451a03;
+    --warning-border: #d97706;
+    --warning-text: #fcd34d;
+
+    --danger-bg: #7f1d1d;
+    --danger-border: #ef4444;
+    --danger-text: #fecaca;
+    --danger-soft: #fca5a5;
+
+    --info-bg: #0369a1;
+    --info-border: #38bdf8;
+    --armor-bg: #1e3a8a;
+    --armor-border: #2563eb;
+    --armor-text: #dbeafe;
+
+    --reaction-bg: #134e4a;
+    --reaction-border: #2dd4bf;
+    --reaction-text: #ccfbf1;
+
+    --gold-text: #fde047;
+
+    /* Roll banner tints */
+    --banner-hope-bg: linear-gradient(135deg, #facc15 0%, #ff5900 100%);
+    --banner-fear-bg: linear-gradient(270deg, #5900ff 0%, #db0000 100%);
+    --banner-crit-bg: #302b19;
+    --banner-crit-border: #facc15;
+    --banner-dmg-bg: #1c2833;
+    --banner-reaction-bg: #192b2a;
+
+    /* Vital pip colors */
+    --pip-size: 22px;
+    --pip-icon-size: 22px;
+    --pip-empty-color: #52525b;
+    --pip-hp-icon: "\ea99";
+    --pip-hp-bg: #dc2626;
+    --pip-hp-border: #fca5a5;
+    --pip-stress-icon: "\eae4";
+    --pip-stress-bg: #7c3aed;
+    --pip-stress-border: #d8b4fe;
+    --pip-hope-icon: "\e992";
+    --pip-hope-bg: #facc15;
+    --pip-hope-border: #a16207;
+    --pip-armor-icon: "\ea96";
+    --pip-armor-bg: #2563eb;
+    --pip-armor-border: #93c5fd;
+
+    /* Daggerheart Domain accents */
+    --domain-arcana: #a855f7;
+    --domain-blade: #ef4444;
+    --domain-bone: #d6d3d1;
+    --domain-codex: #3b82f6;
+    --domain-grace: #ec4899;
+    --domain-midnight: #6366f1;
+    --domain-sage: #22c55e;
+    --domain-splendor: #facc15;
+    --domain-valor: #f97316;
+
+    /* Shadows & layers */
+    --shadow-topbar: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --shadow-modal: 0 18px 40px rgba(0, 0, 0, 0.7);
+    --backdrop-modal: rgba(9, 9, 11, 0.78);
+    --z-topbar: 20;
+  }
+}

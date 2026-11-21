@@ -1,0 +1,15 @@
+{
+  "name": "Yellow's Daggerheart",
+  "version": "1.0.0",
+  "author": "Yellow",
+  "description": "Yellow's Daggerheart, a personal character sheet tool for Yellow's Daggerheart games",
+  "manifest_version": 1,
+  "icon": "/Yellow-s-Daggerheart/icon.svg",
+  "action": {
+    "title": "Yellow's Daggerheart",
+    "icon": "/Yellow-s-Daggerheart/icon.svg",
+    "popover": "/Yellow-s-Daggerheart/",
+    "height": 800,
+    "width": 600
+  }
+}

@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yellow's Daggerheart</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/rpg-awesome/0.2.0/css/rpg-awesome.min.css"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="sticky-chrome" class="sticky-chrome">
+      <header class="topbar">
+        <h1>
+          <img src="daggerheart.svg" alt="Daggerheart Logo" style="
+            height: 20px; 
+            width: auto; 
+            margin: -5px 0px -5px 0px;"></img>
+          Yellow's Daggerheart
+        </h1>
+        <div class="topbar-badges">
+          <span id="sync-status" class="sync-pill">Local</span>
+          <span id="obr-badge" class="badge">Standalone</span>
+        </div>
+      </header>
+
+      <div id="party-switcher" class="party-switcher hidden">
+        <select
+          id="sheet-selector"
+          aria-label="Select party character sheet"
+        ></select>
+        <button
+          type="button"
+          id="new-sheet-btn"
+          class="small-btn"
+          title="Create new sheet"
+        >
+          + Sheet
+        </button>
+        <button
+          type="button"
+          id="delete-sheet-btn"
+          class="small-btn danger-btn"
+          title="Delete selected sheet"
+        >
+          Del
+        </button>
+      </div>
+
+      <nav class="section-nav" aria-label="Jump to sheet section">
+        <button type="button" class="jump-btn" data-target="sec-roll" title="Roll Banner" aria-label="Roll Banner">
+          <i class="ra ra-perspective-dice-random" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-identity" title="Character Info" aria-label="Character Info">
+          <i class="ra ra-player" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-vitals" title="Vitals" aria-label="Vitals">
+          <i class="ra ra-gear-heart" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-armor" title="Armor & Thresholds" aria-label="Armor & Thresholds">
+          <i class="ra ra-shield" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-traits" title="Traits" aria-label="Traits">
+          <i class="ra ra-muscle-up" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-features" title="Class & Subclass Features" aria-label="Class & Subclass Features">
+          <i class="ra ra-fairy-wand" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-heritage" title="Heritage" aria-label="Heritage">
+          <i class="ra ra-sprout" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-experiences" title="Experiences" aria-label="Experiences">
+          <i class="ra ra-scroll-unfurled" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-weapons" title="Weapons" aria-label="Weapons">
+          <i class="ra ra-crossed-swords" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-cards" title="Domain Cards" aria-label="Domain Cards">
+          <i class="ra ra-spades-card" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-inventory" title="Inventory" aria-label="Inventory">
+          <i class="ra ra-gear-hammer" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="jump-btn" data-target="sec-gold" title="Gold" aria-label="Gold">
+          <i class="ra ra-gold-bar" aria-hidden="true"></i>
+        </button>
+      </nav>
+    </div>
+
+    <main id="sheet">
+      <section id="sec-roll" class="card roll-banner">
+        <div class="roll-header">
+          <strong id="roll-summary"><i class="ra ra-perspective-dice-random" aria-hidden="true"></i> Click any trait to roll 2d12</strong>
+          <span id="roller-mode" class="badge">Local 2d12</span>
+        </div>
+        <div id="roll-breakdown" class="roll-breakdown">
+          Hope d12 + Fear d12 + Trait modifier
+        </div>
+      </section>
+
+      <section id="sec-identity" class="card">
+        <div class="section-header">
+          <h2 class="section-title"><i class="ra ra-player" aria-hidden="true"></i> Character</h2>
+          <span id="room-budget" class="room-budget"></span>
+        </div>
+        <div class="grid-2">
+          <label>
+            Name
+            <input id="char-name" type="text" />
+          </label>
+          <label>
+            Level
+            <input id="char-level" type="number" min="1" max="10" />
+          </label>
+        </div>
+        <div class="grid-2">
+          <label>
+            Class
+            <select id="char-class"></select>
+          </label>
+          <label>
+            Subclass
+            <select id="char-subclass"></select>
+          </label>
+        </div>
+        <div class="grid-2">
+          <label>
+            Evasion
+            <input id="char-evasion" type="number" min="1" max="30" />
+          </label>
+          <label>
+            Proficiency
+            <input id="char-proficiency" type="number" min="1" max="6" />
+          </label>
+        </div>
+      </section>
+
+      <section id="sec-vitals" class="card">
+        <h2 class="section-title"><i class="ra ra-gear-heart" aria-hidden="true"></i> Vitals</h2>
+        <div class="track-row">
+          <div class="track-label-group">
+            <span>HP</span>
+            <div class="max-stepper">
+              <button
+                type="button"
+                class="vital-max-btn"
+                data-vital="hp"
+                data-delta="-1"
+                aria-label="Decrease max HP"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                class="vital-max-btn"
+                data-vital="hp"
+                data-delta="1"
+                aria-label="Increase max HP"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div id="hp-pips" class="pips"></div>
+        </div>
+        <div class="track-row">
+          <div class="track-label-group">
+            <span>Stress</span>
+            <div class="max-stepper">
+              <button
+                type="button"
+                class="vital-max-btn"
+                data-vital="stress"
+                data-delta="-1"
+                aria-label="Decrease max Stress"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                class="vital-max-btn"
+                data-vital="stress"
+                data-delta="1"
+                aria-label="Increase max Stress"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div id="stress-pips" class="pips"></div>
+        </div>
+        <div class="track-row">
+          <div class="track-label-group">
+            <span>Hope</span>
+            <div class="max-stepper">
+              <button
+                type="button"
+                class="vital-max-btn"
+                data-vital="hope"
+                data-delta="-1"
+                aria-label="Decrease max Hope"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                class="vital-max-btn"
+                data-vital="hope"
+                data-delta="1"
+                aria-label="Increase max Hope"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div id="hope-pips" class="pips"></div>
+        </div>
+        <div class="track-row">
+          <div class="track-label-group">
+            <span>Armor</span>
+            <div class="max-stepper">
+              <button
+                type="button"
+                class="vital-max-btn"
+                data-vital="armor"
+                data-delta="-1"
+                aria-label="Decrease Armor Score"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                class="vital-max-btn"
+                data-vital="armor"
+                data-delta="1"
+                aria-label="Increase Armor Score"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div id="armor-pips" class="pips"></div>
+        </div>
+        <div class="conditions">
+          <button
+            type="button"
+            class="condition-btn"
+            data-condition="vulnerable"
+          >
+            Vulnerable
+          </button>
+          <button
+            type="button"
+            class="condition-btn"
+            data-condition="restrained"
+          >
+            Restrained
+          </button>
+          <button type="button" class="condition-btn" data-condition="hidden">
+            Hidden
+          </button>
+        </div>
+        <div class="token-hud-bar">
+          <span id="token-hud-status" class="room-budget"
+            >Token HUD: Standalone</span
+          >
+          <div class="token-hud-actions">
+            <button
+              type="button"
+              id="link-token-btn"
+              class="small-btn"
+              disabled
+            >
+              Link Selected Token
+            </button>
+            <button
+              type="button"
+              id="unlink-token-btn"
+              class="small-btn danger-btn hidden"
+            >
+              Unlink
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-armor" class="card">
+        <h2 class="section-title"><i class="ra ra-shield" aria-hidden="true"></i> Armor & Damage Thresholds</h2>
+        <div class="grid-2">
+          <label>
+            Armor Name
+            <input
+              id="armor-name"
+              type="text"
+              placeholder="e.g. Leather Armor"
+            />
+          </label>
+          <label>
+            Armor Feature
+            <input
+              id="armor-feature"
+              type="text"
+              placeholder="e.g. Flexible (+1 Evasion)"
+            />
+          </label>
+        </div>
+        <div class="grid-3">
+          <label>
+            Base Major
+            <input id="armor-major" type="number" min="0" />
+          </label>
+          <label>
+            Base Severe
+            <input id="armor-severe" type="number" min="0" />
+          </label>
+          <label>
+            Armor Score
+            <input id="armor-score" type="number" min="0" max="12" />
+          </label>
+        </div>
+        <div class="thresholds">
+          <span>Major (2 HP): <strong id="major-threshold">7</strong></span>
+          <span>Severe (3 HP): <strong id="severe-threshold">14</strong></span>
+        </div>
+
+        <div class="damage-calc">
+          <div class="damage-input-row">
+            <input
+              id="incoming-damage"
+              type="number"
+              min="0"
+              placeholder="Incoming dmg..."
+              aria-label="Incoming damage"
+            />
+            <span id="damage-preview" class="damage-preview"
+              >Enter damage to evaluate</span
+            >
+          </div>
+          <div class="damage-actions">
+            <button
+              type="button"
+              id="apply-damage-btn"
+              class="dmg-btn"
+              disabled
+            >
+              Take Damage
+            </button>
+            <button
+              type="button"
+              id="apply-armor-damage-btn"
+              class="dmg-btn armor"
+              disabled
+            >
+              Mark 1 Armor
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-traits" class="card">
+        <div class="section-header">
+          <h2 class="section-title"><i class="ra ra-muscle-up" aria-hidden="true"></i> Traits (Click to Roll)</h2>
+          <div
+            class="roll-type-toggle"
+            role="group"
+            aria-label="Action or Reaction roll"
+          >
+            <button
+              type="button"
+              class="roll-type-btn active"
+              data-roll-type="action"
+            >
+              Action
+            </button>
+            <button
+              type="button"
+              class="roll-type-btn"
+              data-roll-type="reaction"
+            >
+              Reaction
+            </button>
+          </div>
+        </div>
+        <div
+          class="roll-mode-toggle"
+          role="group"
+          aria-label="Advantage or Disadvantage"
+        >
+          <button type="button" class="mode-btn" data-mode="disadvantage">
+            Dis (-1d6)
+          </button>
+          <button type="button" class="mode-btn active" data-mode="normal">
+            Normal
+          </button>
+          <button type="button" class="mode-btn" data-mode="advantage">
+            Adv (+1d6)
+          </button>
+        </div>
+        <div class="grid-3">
+          <div class="trait-box">
+            <button type="button" class="trait-roll-btn" data-trait="agility">
+              Agility
+            </button>
+            <input
+              class="trait-input"
+              data-trait="agility"
+              type="number"
+              aria-label="Agility modifier"
+            />
+          </div>
+          <div class="trait-box">
+            <button type="button" class="trait-roll-btn" data-trait="strength">
+              Strength
+            </button>
+            <input
+              class="trait-input"
+              data-trait="strength"
+              type="number"
+              aria-label="Strength modifier"
+            />
+          </div>
+          <div class="trait-box">
+            <button type="button" class="trait-roll-btn" data-trait="finesse">
+              Finesse
+            </button>
+            <input
+              class="trait-input"
+              data-trait="finesse"
+              type="number"
+              aria-label="Finesse modifier"
+            />
+          </div>
+          <div class="trait-box">
+            <button type="button" class="trait-roll-btn" data-trait="instinct">
+              Instinct
+            </button>
+            <input
+              class="trait-input"
+              data-trait="instinct"
+              type="number"
+              aria-label="Instinct modifier"
+            />
+          </div>
+          <div class="trait-box">
+            <button type="button" class="trait-roll-btn" data-trait="presence">
+              Presence
+            </button>
+            <input
+              class="trait-input"
+              data-trait="presence"
+              type="number"
+              aria-label="Presence modifier"
+            />
+          </div>
+          <div class="trait-box">
+            <button type="button" class="trait-roll-btn" data-trait="knowledge">
+              Knowledge
+            </button>
+            <input
+              class="trait-input"
+              data-trait="knowledge"
+              type="number"
+              aria-label="Knowledge modifier"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section id="sec-features" class="card">
+        <div class="section-header">
+          <h2 class="section-title"><i class="ra ra-fairy-wand" aria-hidden="true"></i> Class & Subclass Features</h2>
+          <span id="class-domains-badge" class="domain-pill"></span>
+        </div>
+        <div id="class-features-list" class="feature-stack"></div>
+        <button type="button" id="add-hope-feature-btn" class="small-btn">
+            + Hope Feature
+          </button>
+      </section>
+
+      <section id="sec-heritage" class="card">
+        <div class="section-header">
+          <h2 class="section-title"><i class="ra ra-sprout" aria-hidden="true"></i> Heritage</h2>
+          <label class="inline-toggle">
+            <input id="heritage-mixed" type="checkbox" />
+            <span>Mixed Ancestry</span>
+          </label>
+        </div>
+        <div class="grid-2">
+          <label>
+            Community
+            <select id="heritage-community"></select>
+          </label>
+          <label>
+            Ancestry
+            <select id="heritage-ancestry"></select>
+          </label>
+        </div>
+        <div id="second-ancestry-wrap" class="hidden">
+          <label>
+            Second Ancestry (Mixed)
+            <select id="heritage-ancestry-2"></select>
+          </label>
+        </div>
+        <div id="heritage-features-list" class="feature-stack"></div>
+      </section>
+
+      <section id="sec-experiences" class="card">
+        <div class="section-header">
+          <h2 class="section-title"><i class="ra ra-scroll-unfurled" aria-hidden="true"></i> Experiences (1 Hope Each)</h2>
+          <button type="button" id="add-exp-btn" class="small-btn">
+            + Add
+          </button>
+        </div>
+        <div id="experiences-list" class="exp-list"></div>
+        <div id="exp-hope-hint" class="exp-hint"></div>
+      </section>
+
+      <section id="sec-weapons" class="card">
+        <h2 class="section-title"><i class="ra ra-crossed-swords" aria-hidden="true"></i> Active Weapons</h2>
+        <div class="weapon-block">
+          <div class="weapon-header-row">
+            <input
+              type="text"
+              class="weapon-field"
+              data-weapon="primary"
+              data-field="name"
+              placeholder="Primary weapon (e.g. Dualstaff)"
+              aria-label="Primary weapon name"
+            />
+            <button
+              type="button"
+              class="weapon-attack-btn"
+              data-weapon="primary"
+            >
+              Atk
+            </button>
+            <button
+              type="button"
+              class="weapon-damage-btn"
+              data-weapon="primary"
+            >
+              Dmg
+            </button>
+          </div>
+          <div class="weapon-stats-grid">
+            <select
+              class="weapon-field"
+              data-weapon="primary"
+              data-field="trait"
+              aria-label="Primary weapon trait"
+            >
+              <option value="agility">Agility</option>
+              <option value="strength">Strength</option>
+              <option value="finesse">Finesse</option>
+              <option value="instinct">Instinct</option>
+              <option value="presence">Presence</option>
+              <option value="knowledge">Knowledge</option>
+            </select>
+            <input
+              type="text"
+              class="weapon-field"
+              data-weapon="primary"
+              data-field="range"
+              placeholder="Range"
+              aria-label="Primary weapon range"
+            />
+            <select
+              class="weapon-field"
+              data-weapon="primary"
+              data-field="dieSides"
+              aria-label="Primary weapon die"
+            >
+              <option value="4">d4</option>
+              <option value="6">d6</option>
+              <option value="8">d8</option>
+              <option value="10">d10</option>
+              <option value="12">d12</option>
+            </select>
+            <input
+              type="number"
+              class="weapon-field"
+              data-weapon="primary"
+              data-field="flatBonus"
+              placeholder="+0"
+              aria-label="Primary weapon bonus"
+            />
+            <select
+              class="weapon-field"
+              data-weapon="primary"
+              data-field="damageType"
+              aria-label="Primary damage type"
+            >
+              <option value="Physical">Phy</option>
+              <option value="Magic">Mag</option>
+            </select>
+          </div>
+          <input
+            type="text"
+            class="weapon-field weapon-feature"
+            data-weapon="primary"
+            data-field="feature"
+            placeholder="Feature / notes..."
+            aria-label="Primary weapon feature"
+          />
+        </div>
+
+        <div class="weapon-block">
+          <div class="weapon-header-row">
+            <input
+              type="text"
+              class="weapon-field"
+              data-weapon="secondary"
+              data-field="name"
+              placeholder="Secondary weapon (optional)"
+              aria-label="Secondary weapon name"
+            />
+            <button
+              type="button"
+              class="weapon-attack-btn"
+              data-weapon="secondary"
+            >
+              Atk
+            </button>
+            <button
+              type="button"
+              class="weapon-damage-btn"
+              data-weapon="secondary"
+            >
+              Dmg
+            </button>
+          </div>
+          <div class="weapon-stats-grid">
+            <select
+              class="weapon-field"
+              data-weapon="secondary"
+              data-field="trait"
+              aria-label="Secondary weapon trait"
+            >
+              <option value="agility">Agility</option>
+              <option value="strength">Strength</option>
+              <option value="finesse">Finesse</option>
+              <option value="instinct">Instinct</option>
+              <option value="presence">Presence</option>
+              <option value="knowledge">Knowledge</option>
+            </select>
+            <input
+              type="text"
+              class="weapon-field"
+              data-weapon="secondary"
+              data-field="range"
+              placeholder="Range"
+              aria-label="Secondary weapon range"
+            />
+            <select
+              class="weapon-field"
+              data-weapon="secondary"
+              data-field="dieSides"
+              aria-label="Secondary weapon die"
+            >
+              <option value="4">d4</option>
+              <option value="6">d6</option>
+              <option value="8">d8</option>
+              <option value="10">d10</option>
+              <option value="12">d12</option>
+            </select>
+            <input
+              type="number"
+              class="weapon-field"
+              data-weapon="secondary"
+              data-field="flatBonus"
+              placeholder="+0"
+              aria-label="Secondary weapon bonus"
+            />
+            <select
+              class="weapon-field"
+              data-weapon="secondary"
+              data-field="damageType"
+              aria-label="Secondary damage type"
+            >
+              <option value="Physical">Phy</option>
+              <option value="Magic">Mag</option>
+            </select>
+          </div>
+          <input
+            type="text"
+            class="weapon-field weapon-feature"
+            data-weapon="secondary"
+            data-field="feature"
+            placeholder="Feature / notes..."
+            aria-label="Secondary weapon feature"
+          />
+        </div>
+      </section>
+
+      <section id="sec-cards" class="card">
+        <div class="section-header">
+          <h2 class="section-title"><i class="ra ra-spades-card" aria-hidden="true"></i> Domain Cards</h2>
+          <div class="card-header-actions">
+            <button
+              type="button"
+              id="browse-cards-btn"
+              class="small-btn primary-btn"
+            >
+              Browse SRD
+            </button>
+            <button type="button" id="add-card-btn" class="small-btn">
+              + Custom
+            </button>
+          </div>
+        </div>
+
+        <div
+          class="domain-tabs"
+          role="tablist"
+          aria-label="Domain Card Location"
+        >
+          <button
+            type="button"
+            class="domain-tab-btn active"
+            data-tab="loadout"
+            role="tab"
+          >
+            Loadout (<span id="tab-count-loadout">0</span>/5)
+          </button>
+          <button
+            type="button"
+            class="domain-tab-btn"
+            data-tab="vault"
+            role="tab"
+          >
+            Vault (<span id="tab-count-vault">0</span>)
+          </button>
+        </div>
+
+        <div id="domain-cards-list" class="domain-cards-list"></div>
+        <div id="domain-cards-hint" class="exp-hint"></div>
+      </section>
+
+      <section id="sec-inventory" class="card">
+        <div class="section-header">
+          <h2 class="section-title"><i class="ra ra-gear-hammer" aria-hidden="true"></i> Inventory</h2>
+          <button type="button" id="add-inv-btn" class="small-btn">
+            + Item
+          </button>
+        </div>
+        <div id="inventory-list" class="inv-list"></div>
+      </section>
+
+      <section id="sec-gold" class="card">
+        <h2 class="section-title"><i class="ra ra-gold-bar" aria-hidden="true"></i> Gold</h2>
+        <div class="gold-grid">
+          <div class="gold-box">
+            <span class="gold-label">Handfuls</span>
+            <div class="gold-stepper">
+              <button
+                type="button"
+                class="gold-btn"
+                data-unit="handfuls"
+                data-delta="-1"
+              >
+                −
+              </button>
+              <strong id="gold-handfuls">1</strong>
+              <button
+                type="button"
+                class="gold-btn"
+                data-unit="handfuls"
+                data-delta="1"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div class="gold-box">
+            <span class="gold-label">Bags</span>
+            <div class="gold-stepper">
+              <button
+                type="button"
+                class="gold-btn"
+                data-unit="bags"
+                data-delta="-1"
+              >
+                −
+              </button>
+              <strong id="gold-bags">0</strong>
+              <button
+                type="button"
+                class="gold-btn"
+                data-unit="bags"
+                data-delta="1"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div class="gold-box">
+            <span class="gold-label">Chests</span>
+            <div class="gold-stepper">
+              <button
+                type="button"
+                class="gold-btn"
+                data-unit="chests"
+                data-delta="-1"
+              >
+                −
+              </button>
+              <strong id="gold-chests">0</strong>
+              <button
+                type="button"
+                class="gold-btn"
+                data-unit="chests"
+                data-delta="1"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="exp-hint">10 Handfuls = 1 Bag • 10 Bags = 1 Chest</div>
+      </section>
+    </main>
+    <dialog
+      id="card-picker-modal"
+      class="picker-modal"
+      aria-labelledby="picker-title"
+    >
+      <div class="picker-shell">
+        <header class="picker-header">
+          <div>
+            <h2 id="picker-title">SRD Domain Cards</h2>
+            <div class="picker-subrow">
+              <span id="picker-count" class="room-budget"></span>
+              <span id="picker-capacity" class="room-budget"></span>
+            </div>
+          </div>
+          <button
+            type="button"
+            id="picker-close-btn"
+            class="small-btn"
+            aria-label="Close picker"
+          >
+            ✕
+          </button>
+        </header>
+
+        <div class="picker-filters">
+          <input
+            id="picker-search"
+            type="search"
+            placeholder="Search by card name or rules text..."
+            aria-label="Search domain cards"
+          />
+          <div class="grid-2">
+            <select id="picker-domain" aria-label="Filter by domain"></select>
+            <select id="picker-level" aria-label="Filter by level"></select>
+          </div>
+        </div>
+
+        <div id="picker-results" class="picker-results"></div>
+
+        <footer class="picker-footer">
+          <span id="picker-status" class="room-budget"
+            >Source: seansbox/daggerheart-srd</span
+          >
+          <button type="button" id="picker-refresh-btn" class="small-btn">
+            Refresh
+          </button>
+        </footer>
+      </div>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
