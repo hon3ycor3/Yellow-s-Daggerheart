@@ -442,10 +442,10 @@
   .feature-item.hope-feature * {
     color: white !important;
     text-shadow:
-      -1px -1px 0 #000,
-      1px -1px 0 #000,
-      -1px 1px 0 #000,
-      1px 1px 0 #000;
+      -1px -1px 0 #a16207,
+      1px -1px 0 #a16207,
+      -1px 1px 0 #a16207,
+      1px 1px 0 #a16207;
     font-weight: 1000;
   }
 

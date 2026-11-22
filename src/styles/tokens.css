@@ -84,7 +84,7 @@ Changing --accent or --bg-surface re-themes the entire extension immediately.
     --gold-text: #fde047;
 
     /* Roll banner tints */
-    --banner-hope-bg: linear-gradient(135deg, #facc15 0%, #ff5900 100%);
+    --banner-hope-bg: linear-gradient(135deg, #ff5900 0%, #937e08 100%);
     --banner-fear-bg: linear-gradient(270deg, #5900ff 0%, #db0000 100%);
     --banner-crit-bg: #302b19;
     --banner-crit-border: #facc15;
