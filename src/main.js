@@ -1306,3 +1306,45 @@ OBR.onReady(async () => {
   const isDicePlusReady = await checkDicePlusReady();
   setRollerModeBadge(isDicePlusReady);
 });
+const META_PREFIX = "daggerheart-obr-sheet/";
+const SHEET_KEY_PREFIX = `${META_PREFIX}s/`;
+const LEGACY_SHEETS_KEY = `${META_PREFIX}sheets`; // Your old monolithic key, if applicable
+
+/**
+ * Safely saves one character sheet to Room Metadata with compression and pre-flight checking.
+ * @param {string} sheetId
+ * @param {import("./state.js").CharacterState} character
+ */
+async function syncSheetToRoom(sheetId, character) {
+  // 1. Always mirror locally first so a full room NEVER loses a player's edits
+  saveLocalDraft(sheetId, character);
+
+  if (!obrConnected) return { ok: true, localOnly: true };
+
+  // 2. Dehydrate + compress
+  const slim = dehydrateCharacter(
+    character,
+    createDefaultCharacter(),
+    findMatchingSrdCardId,
+  );
+  const encoded = await compressJson(slim);
+  const patch = { [`${SHEET_KEY_PREFIX}${sheetId}`]: encoded };
+
+  // 3. Pre-flight check against ALL room metadata (including other extensions)
+  const currentMeta = await OBR.room.getMetadata();
+  const budget = inspectRoomBudget(currentMeta, patch, META_PREFIX);
+  updateStorageMeterUI(budget);
+
+  if (!budget.fitsSafeLimit) {
+    showStorageWarning(
+      `Room storage nearly full (${(budget.totalBytes / 1024).toFixed(1)} / 16 KB). ` +
+        `Changes saved locally—export JSON or archive an unused sheet to resume syncing.`,
+    );
+    return { ok: false, reason: "quota", budget };
+  }
+
+  // 4. Safe to write to Owlbear Rodeo
+  clearStorageWarning();
+  await OBR.room.setMetadata(patch);
+  return { ok: true, budget };
+}
