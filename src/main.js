@@ -644,11 +644,12 @@ function syncNavOrderToGrid() {
 /**
  * @param {import("./state.js").TraitKey} traitKey
  * @param {string} displayLabel
+ * @param {number} [extraModifier]
  */
-async function performTraitRoll(traitKey, displayLabel) {
+async function performTraitRoll(traitKey, displayLabel, extraModifier = 0) {
   if (isRolling) return;
 
-  const traitModifier = character.traits[traitKey];
+  const traitModifier = character.traits[traitKey] + extraModifier;
   const activeExps = character.experiences.filter((exp) =>
     selectedExperienceIds.has(exp.id),
   );
