@@ -36,6 +36,15 @@ export const DICE_PLUS_CHANNELS = {
  * @property {DualityOutcome} outcome
  * @property {string} outcomeText
  * @property {"local" | "dice-plus"} engine
+ *
+ * @typedef {Object} DamageRollResult
+ * @property {string} weaponName
+ * @property {string} notation
+ * @property {number[]} diceRolls
+ * @property {number} flatBonus
+ * @property {import("./state.js").DamageType} damageType
+ * @property {number} total
+ * @property {"local" | "dice-plus"} engine
  */
 
 let dicePlusAvailable = false;
@@ -103,6 +112,29 @@ export function buildDicePlusNotation(
         : "";
 
   return `${baseDice}${advPart}${spacedMod}`;
+}
+
+/**
+ * Plain Dice+ fallback with no custom `{hope}`/`{fear}` dice style tags or `#` labels.
+ * @param {number} totalFlatModifier
+ * @param {RollMode} rollMode
+ * @param {boolean} isReaction
+ */
+function buildPlainDualityNotation(totalFlatModifier, rollMode, isReaction) {
+  const baseDice = isReaction ? "2d12" : "1d12+1d12";
+  const advPart =
+    rollMode === "advantage"
+      ? "+1d6"
+      : rollMode === "disadvantage"
+        ? "-1d6"
+        : "";
+  const modPart =
+    totalFlatModifier > 0
+      ? `+${totalFlatModifier}`
+      : totalFlatModifier < 0
+        ? `${totalFlatModifier}`
+        : "";
+  return `${baseDice}${advPart}${modPart}`;
 }
 
 /**
@@ -179,7 +211,7 @@ export function evaluateDualityRoll(
 }
 
 /**
- * Local JS fallback when Dice+ is not installed or when testing standalone.
+ * Local JS fallback when Dice+ is not installed or unavailable.
  * @param {string} traitLabel
  * @param {number} traitModifier
  * @param {RollOptions} [options]
@@ -262,7 +294,7 @@ export async function checkDicePlusReady() {
 /**
  * Official Dice+ notation validator via `dice-plus/validate-notation`.
  * @param {string} notation
- * @returns {Promise<{ valid: boolean, error?: string }>}
+ * @returns {Promise<{ valid: boolean, timedOut?: boolean, error?: string }>}
  */
 export async function validateDicePlusNotation(notation) {
   if (!OBR.isAvailable) {
@@ -274,7 +306,7 @@ export async function validateDicePlusNotation(notation) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       unsubscribe();
-      resolve({ valid: false, error: "Dice+ did not respond" });
+      resolve({ valid: false, timedOut: true, error: "Dice+ did not respond" });
     }, 1000);
 
     const unsubscribe = OBR.broadcast.onMessage(
@@ -309,8 +341,7 @@ export async function validateDicePlusNotation(notation) {
 }
 
 /**
- * Extracts both d12 faces (supporting either two 1d12 groups or one 2d12 reaction group)
- * and the optional Advantage/Disadvantage d6 from Dice+ `result.groups`.
+ * Extracts both d12 faces and optional Advantage/Disadvantage d6 from Dice+ `result.groups`.
  * @param {any} data
  * @param {RollMode} rollMode
  * @param {boolean} isReaction
@@ -338,7 +369,11 @@ function extractRollDice(data, rollMode, isReaction) {
     );
     if (keptDice.length === 0) continue;
 
-    if (group?.diceType === "d12") {
+    const diceType = String(group?.diceType ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (diceType === "d12") {
       const description = String(group?.description ?? "")
         .trim()
         .toLowerCase();
@@ -365,11 +400,7 @@ function extractRollDice(data, rollMode, isReaction) {
 
         fallbackD12s.push(keptDie.value);
       }
-    } else if (
-      group?.diceType === "d6" &&
-      rollMode !== "normal" &&
-      advDie === null
-    ) {
+    } else if (diceType === "d6" && rollMode !== "normal" && advDie === null) {
       advDie = Math.abs(keptDice[0].value);
     }
   }
@@ -391,6 +422,36 @@ function extractRollDice(data, rollMode, isReaction) {
 }
 
 /**
+ * Picks the highest-fidelity Dice+ notation accepted by the installed Dice+ version.
+ * Throws immediately if Dice+ stops responding.
+ * @param {number} totalFlatModifier
+ * @param {RollMode} rollMode
+ * @param {boolean} isReaction
+ */
+async function resolveValidDualityNotation(
+  totalFlatModifier,
+  rollMode,
+  isReaction,
+) {
+  const candidates = [
+    buildDicePlusNotation(totalFlatModifier, rollMode, true, isReaction),
+    buildDicePlusNotation(totalFlatModifier, rollMode, false, isReaction),
+    buildPlainDualityNotation(totalFlatModifier, rollMode, isReaction),
+  ];
+
+  for (const notation of candidates) {
+    const check = await validateDicePlusNotation(notation);
+    if (check.timedOut) {
+      throw new Error("Dice+ did not respond to notation check.");
+    }
+    if (check.valid) return notation;
+    console.warn("[Dice+ validation fallback]", notation, check.error);
+  }
+
+  return candidates[candidates.length - 1];
+}
+
+/**
  * Sends a 3D roll request to Dice+ and resolves once the dice settle.
  * @param {string} traitLabel
  * @param {number} traitModifier
@@ -406,25 +467,11 @@ async function rollWithDicePlus(traitLabel, traitModifier, options = {}) {
   const totalFlatModifier = traitModifier + experienceBonus;
 
   const rollId = createRollId();
-  const playerId = await OBR.player.getId();
-  const playerName = await OBR.player.getName();
-
-  let diceNotation = buildDicePlusNotation(
-    totalFlatModifier,
-    rollMode,
-    true,
-    isReaction,
-  );
-  const validation = await validateDicePlusNotation(diceNotation);
-  if (!validation.valid) {
-    console.warn("[Dice+ validation fallback]", validation.error);
-    diceNotation = buildDicePlusNotation(
-      totalFlatModifier,
-      rollMode,
-      false,
-      isReaction,
-    );
-  }
+  const [playerId, playerName, diceNotation] = await Promise.all([
+    OBR.player.getId(),
+    OBR.player.getName(),
+    resolveValidDualityNotation(totalFlatModifier, rollMode, isReaction),
+  ]);
 
   return new Promise((resolve, reject) => {
     const cleanup = () => {
@@ -499,7 +546,8 @@ async function rollWithDicePlus(traitLabel, traitModifier, options = {}) {
 }
 
 /**
- * Main adapter called by src/main.js whenever a Trait or Weapon Attack button is clicked.
+ * Main adapter called by src/main.js whenever a Trait or Attack button is clicked.
+ * Automatically falls back to local 2d12 if Dice+ is unavailable or fails.
  * @param {string} traitLabel
  * @param {number} traitModifier
  * @param {RollOptions} [options]
@@ -515,22 +563,19 @@ export async function rollDualityTrait(
   }
 
   if (dicePlusAvailable) {
-    return await rollWithDicePlus(traitLabel, traitModifier, options);
+    try {
+      return await rollWithDicePlus(traitLabel, traitModifier, options);
+    } catch (err) {
+      console.warn(
+        "[Roller] Dice+ roll failed; falling back to local 2d12:",
+        err,
+      );
+      dicePlusAvailable = false;
+    }
   }
 
   return rollLocalDuality(traitLabel, traitModifier, options);
 }
-
-/**
- * @typedef {Object} DamageRollResult
- * @property {string} weaponName
- * @property {string} notation
- * @property {number[]} diceRolls
- * @property {number} flatBonus
- * @property {import("./state.js").DamageType} damageType
- * @property {number} total
- * @property {"local" | "dice-plus"} engine
- */
 
 /**
  * Formats a compact weapon damage formula like "1d6+3" or "2d8".
@@ -617,8 +662,10 @@ async function rollWeaponDamageWithDicePlus(
   rollTarget = "everyone",
 ) {
   const rollId = createRollId();
-  const playerId = await OBR.player.getId();
-  const playerName = await OBR.player.getName();
+  const [playerId, playerName] = await Promise.all([
+    OBR.player.getId(),
+    OBR.player.getName(),
+  ]);
   const compactFormula = formatDamageFormula(proficiency, dieSides, flatBonus);
 
   let diceNotation = buildDamageNotation(
@@ -629,6 +676,9 @@ async function rollWeaponDamageWithDicePlus(
     true,
   );
   const validation = await validateDicePlusNotation(diceNotation);
+  if (validation.timedOut) {
+    throw new Error("Dice+ did not respond to damage notation check.");
+  }
   if (!validation.valid) {
     console.warn("[Dice+ damage validation fallback]", validation.error);
     diceNotation = compactFormula;
@@ -708,7 +758,7 @@ async function rollWeaponDamageWithDicePlus(
 }
 
 /**
- * Rolls weapon damage using Dice+ if available, or locally otherwise.
+ * Rolls weapon damage using Dice+ if available, falling back to local on failure.
  * @param {string} weaponName
  * @param {number} proficiency
  * @param {number} dieSides
@@ -728,13 +778,21 @@ export async function rollWeaponDamage(
   }
 
   if (dicePlusAvailable) {
-    return await rollWeaponDamageWithDicePlus(
-      weaponName,
-      proficiency,
-      dieSides,
-      flatBonus,
-      damageType,
-    );
+    try {
+      return await rollWeaponDamageWithDicePlus(
+        weaponName,
+        proficiency,
+        dieSides,
+        flatBonus,
+        damageType,
+      );
+    } catch (err) {
+      console.warn(
+        "[Roller] Dice+ damage roll failed; falling back to local:",
+        err,
+      );
+      dicePlusAvailable = false;
+    }
   }
 
   const count = Math.max(1, proficiency);
