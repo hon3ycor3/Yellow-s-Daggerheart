@@ -6,6 +6,19 @@ import {
 } from "./srdData.js";
 
 const STORAGE_KEY = "daggerheart-obr-sheet-v1";
+const DRAFTS_STORAGE_KEY = "daggerheart-obr-drafts-v1";
+
+/**
+ * Generates a compact 6-character base36 ID (saves ~30 bytes per item over UUIDs).
+ * @param {string} [prefix]
+ */
+export function makeShortId(prefix = "") {
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  const num =
+    ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+  return `${prefix}${num.toString(36).padStart(6, "0").slice(0, 6)}`;
+}
 
 export const MAX_LOADOUT_CARDS = 5;
 
@@ -83,6 +96,7 @@ export const DOMAIN_NAMES = /** @type {const} */ ([
  * @property {{ handfuls: number, bags: number, chests: number }} gold
  * @property {DomainCard[]} domainCards
  * @property {InventoryItem[]} inventory
+ * @property {Array<{ id: string, name: string, tag: string, text: string }>} customHopeFeatures
  */
 
 /**
@@ -92,7 +106,7 @@ export const DOMAIN_NAMES = /** @type {const} */ ([
  */
 export function createExperience(label = "", bonus = 2) {
   return {
-    id: crypto.randomUUID(),
+    id: makeShortId("e"),
     label,
     bonus,
   };
@@ -104,7 +118,7 @@ export function createExperience(label = "", bonus = 2) {
  */
 export function createInventoryItem(text = "") {
   return {
-    id: crypto.randomUUID(),
+    id: makeShortId("i"),
     text,
   };
 }
@@ -115,7 +129,7 @@ export function createInventoryItem(text = "") {
  */
 export function createDomainCard(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: makeShortId("c"),
     ...(overrides.srdId ? { srdId: overrides.srdId } : {}),
     name: overrides.name ?? "",
     domain: overrides.domain ?? "Arcana",
@@ -403,4 +417,45 @@ export function loadLocalState() {
 /** @param {CharacterState} character */
 export function saveLocalState(character) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(character));
+}
+
+/** @returns {Record<string, CharacterState>} */
+function readDraftMap() {
+  try {
+    const raw = localStorage.getItem(DRAFTS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Saves an unsynced per-sheet backup locally if Room Metadata hits the 16 KB cap.
+ * @param {string} sheetId
+ * @param {CharacterState} character
+ */
+export function saveLocalDraft(sheetId, character) {
+  if (!sheetId) return;
+  try {
+    const map = readDraftMap();
+    map[sheetId] = character;
+    localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // Ignore localStorage quota errors
+  }
+}
+
+/** @param {string} sheetId */
+export function clearLocalDraft(sheetId) {
+  if (!sheetId) return;
+  try {
+    const map = readDraftMap();
+    if (sheetId in map) {
+      delete map[sheetId];
+      localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(map));
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
 }

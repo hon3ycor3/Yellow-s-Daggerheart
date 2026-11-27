@@ -10,6 +10,7 @@ import {
   DOMAIN_NAMES,
   getLoadoutCount,
   loadLocalState,
+  makeShortId,
   MAX_LOADOUT_CARDS,
   saveLocalState,
 } from "./state.js";
@@ -18,10 +19,19 @@ import {
   deleteSheetFromRoom,
   extractRoomSheets,
   measureMetadataBytes,
+  migrateLegacyRoomSheets,
+  previewSheetsBudget,
   ROOM_METADATA_LIMIT_BYTES,
   ROOM_METADATA_WARN_BYTES,
+  RoomQuotaError,
   saveSheetToRoom,
 } from "./storage.js";
+import { rehydrateUnresolvedSrdCards } from "./storageCodec.js";
+import {
+  exportPartyBackup,
+  exportSingleCharacter,
+  parseImportedFile,
+} from "./jsonTransfer.js";
 import { getSubclassesForClass } from "./srdData.js";
 import {
   populateStaticSelects,
@@ -69,6 +79,23 @@ const badgeEl = document.getElementById("obr-badge");
 const sheetSelectorEl = document.getElementById("sheet-selector");
 const newSheetBtn = document.getElementById("new-sheet-btn");
 const deleteSheetBtn = document.getElementById("delete-sheet-btn");
+const storageWarningBanner = document.getElementById("storage-warning-banner");
+const storageWarningText = document.getElementById("storage-warning-text");
+const warningExportBtn = document.getElementById("warning-export-btn");
+const warningRetryBtn = document.getElementById("warning-retry-btn");
+const exportSheetBtn = document.getElementById("export-sheet-btn");
+const exportPartyBtn = document.getElementById("export-party-btn");
+const importJsonBtn = document.getElementById("import-json-btn");
+const archiveSheetBtn = document.getElementById("archive-sheet-btn");
+const importJsonInput = document.getElementById("import-json-input");
+const importModeDialog = document.getElementById("import-mode-dialog");
+const importDialogDesc = document.getElementById("import-dialog-desc");
+const importAsNewBtn = document.getElementById("import-as-new-btn");
+const importReplaceBtn = document.getElementById("import-replace-btn");
+const importCancelBtn = document.getElementById("import-cancel-btn");
+const importCancelX = document.getElementById("import-cancel-x");
+
+let metadataSeq = 0;
 
 let obrConnected = false;
 let isGM = false;
@@ -96,8 +123,38 @@ let activeDomainTab = "loadout";
 /** @type {Set<string>} */
 const editingCardIds = new Set();
 
-const roomSaver = createRoomSaver((status, errorMessage) => {
+/** @param {string} message */
+function showStorageWarning(message) {
+  if (storageWarningText) storageWarningText.textContent = message;
+  storageWarningBanner?.classList.remove("hidden");
+}
+
+function clearStorageWarning() {
+  storageWarningBanner?.classList.add("hidden");
+}
+
+function updateTransferButtons() {
+  const canManage = canManagePartySheets();
+  exportPartyBtn?.classList.toggle(
+    "hidden",
+    !obrConnected || roomSheets.size === 0,
+  );
+  archiveSheetBtn?.classList.toggle(
+    "hidden",
+    !canManage || roomSheets.size <= 1 || !activeSheetId,
+  );
+}
+
+const roomSaver = createRoomSaver((status, errorMessage, budget) => {
   currentSyncStatus = status;
+  if (budget) lastRoomBytes = budget.totalBytes;
+
+  if (status === "synced") {
+    clearStorageWarning();
+  } else if (status === "error" && errorMessage) {
+    showStorageWarning(errorMessage);
+  }
+
   renderSyncStatus(
     status,
     lastRoomBytes,
@@ -142,7 +199,11 @@ const cardPicker = initCardPicker({
 
 // Preload SRD catalog in background so existing SRD cards hydrate their text immediately
 void loadCardCatalog().then(() => {
-  if (editingCardIds.size === 0) {
+  let upgraded = rehydrateUnresolvedSrdCards(character);
+  for (const sheet of roomSheets.values()) {
+    if (rehydrateUnresolvedSrdCards(sheet)) upgraded = true;
+  }
+  if ((upgraded || editingCardIds.size === 0) && editingCardIds.size === 0) {
     renderDomainCards(character, activeDomainTab, editingCardIds);
   }
 });
@@ -597,18 +658,24 @@ if (newSheetBtn instanceof HTMLButtonElement) {
 
     await roomSaver.flushSave();
 
-    const newId = crypto.randomUUID();
+    const newId = makeShortId("s_");
     const freshSheet = createDefaultCharacter();
     freshSheet.name = `Character ${roomSheets.size + 1}`;
 
-    roomSheets.set(newId, freshSheet);
-    activeSheetId = newId;
-    character = JSON.parse(JSON.stringify(freshSheet));
-    editingCardIds.clear();
-    selectedExperienceIds.clear();
-
-    renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
-    renderFullSheet();
+    // Pre-flight check BEFORE mutating active sheet state
+    const { budget } = await previewSheetsBudget({ [newId]: freshSheet });
+    if (!budget.fitsSafeLimit) {
+      const msg = `Cannot create new sheet (${(budget.totalBytes / 1024).toFixed(1)} / 16 KB). Export & Archive an unused sheet first.`;
+      showStorageWarning(msg);
+      renderSyncStatus(
+        "error",
+        lastRoomBytes,
+        ROOM_METADATA_WARN_BYTES,
+        ROOM_METADATA_LIMIT_BYTES,
+        msg,
+      );
+      return;
+    }
 
     currentSyncStatus = "saving";
     renderSyncStatus(
@@ -619,7 +686,21 @@ if (newSheetBtn instanceof HTMLButtonElement) {
     );
 
     try {
-      await saveSheetToRoom(newId, freshSheet);
+      const savedBudget = await saveSheetToRoom(newId, freshSheet);
+      lastRoomBytes = savedBudget.totalBytes;
+      clearStorageWarning();
+
+      roomSheets.set(newId, freshSheet);
+      activeSheetId = newId;
+      character = JSON.parse(JSON.stringify(freshSheet));
+      editingCardIds.clear();
+      selectedExperienceIds.clear();
+
+      renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+      updateTransferButtons();
+      renderFullSheet();
+      void refreshTokenHudUI();
+
       currentSyncStatus = "synced";
       renderSyncStatus(
         "synced",
@@ -630,6 +711,7 @@ if (newSheetBtn instanceof HTMLButtonElement) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not create sheet";
       currentSyncStatus = "error";
+      showStorageWarning(msg);
       renderSyncStatus(
         "error",
         lastRoomBytes,
@@ -665,12 +747,237 @@ if (deleteSheetBtn instanceof HTMLButtonElement) {
     editingCardIds.clear();
     selectedExperienceIds.clear();
     renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+    updateTransferButtons();
     renderFullSheet();
 
     try {
       await deleteSheetFromRoom(idToDelete);
     } catch (err) {
       console.error("[Daggerheart Sheet] Failed to delete sheet:", err);
+    }
+  });
+}
+
+/**
+ * Prompts the user to pick "new", "replace", or "cancel" via <dialog>.
+ * @param {string} description
+ * @param {{ allowNew: boolean }} opts
+ * @returns {Promise<"new" | "replace" | "cancel">}
+ */
+function askImportMode(description, { allowNew }) {
+  return new Promise((resolve) => {
+    if (!(importModeDialog instanceof HTMLDialogElement)) {
+      resolve("replace");
+      return;
+    }
+
+    if (importDialogDesc) importDialogDesc.textContent = description;
+    if (importAsNewBtn instanceof HTMLButtonElement) {
+      importAsNewBtn.disabled = !allowNew;
+      importAsNewBtn.classList.toggle("hidden", !allowNew);
+    }
+
+    const cleanup = (/** @type {"new" | "replace" | "cancel"} */ choice) => {
+      importAsNewBtn?.removeEventListener("click", onNew);
+      importReplaceBtn?.removeEventListener("click", onReplace);
+      importCancelBtn?.removeEventListener("click", onCancel);
+      importCancelX?.removeEventListener("click", onCancel);
+      importModeDialog.removeEventListener("cancel", onCancel);
+      if (importModeDialog.open) importModeDialog.close();
+      resolve(choice);
+    };
+
+    const onNew = () => cleanup("new");
+    const onReplace = () => cleanup("replace");
+    const onCancel = () => cleanup("cancel");
+
+    importAsNewBtn?.addEventListener("click", onNew);
+    importReplaceBtn?.addEventListener("click", onReplace);
+    importCancelBtn?.addEventListener("click", onCancel);
+    importCancelX?.addEventListener("click", onCancel);
+    importModeDialog.addEventListener("cancel", onCancel);
+    importModeDialog.showModal();
+  });
+}
+
+warningExportBtn?.addEventListener("click", () => {
+  exportSingleCharacter(character);
+});
+
+warningRetryBtn?.addEventListener("click", async () => {
+  const ok = await roomSaver.retryLastFailed();
+  if (!ok && obrConnected && activeSheetId) {
+    try {
+      const budget = await saveSheetToRoom(activeSheetId, character);
+      lastRoomBytes = budget.totalBytes;
+      currentSyncStatus = "synced";
+      clearStorageWarning();
+      renderSyncStatus(
+        "synced",
+        lastRoomBytes,
+        ROOM_METADATA_WARN_BYTES,
+        ROOM_METADATA_LIMIT_BYTES,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Retry failed";
+      showStorageWarning(msg);
+    }
+  }
+});
+
+exportSheetBtn?.addEventListener("click", () => {
+  exportSingleCharacter(character);
+});
+
+exportPartyBtn?.addEventListener("click", () => {
+  exportPartyBackup(roomSheets);
+});
+
+archiveSheetBtn?.addEventListener("click", async () => {
+  if (!canManagePartySheets() || roomSheets.size <= 1 || !activeSheetId) return;
+
+  const sheetName = character.name.trim() || "this character";
+  if (
+    !window.confirm(
+      `Export "${sheetName}" as JSON and remove it from this room to free storage?`,
+    )
+  ) {
+    return;
+  }
+
+  exportSingleCharacter(character);
+
+  const idToDelete = activeSheetId;
+  roomSheets.delete(idToDelete);
+
+  const nextId = roomSheets.keys().next().value;
+  if (nextId) {
+    const nextSheet = roomSheets.get(nextId);
+    if (nextSheet) {
+      activeSheetId = nextId;
+      character = JSON.parse(JSON.stringify(nextSheet));
+    }
+  }
+
+  editingCardIds.clear();
+  selectedExperienceIds.clear();
+  renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+  updateTransferButtons();
+  renderFullSheet();
+  void refreshTokenHudUI();
+
+  try {
+    await deleteSheetFromRoom(idToDelete);
+    clearStorageWarning();
+  } catch (err) {
+    console.error("[Daggerheart Sheet] Archive delete failed:", err);
+  }
+});
+
+importJsonBtn?.addEventListener("click", () => {
+  if (importJsonInput instanceof HTMLInputElement) {
+    importJsonInput.value = "";
+    importJsonInput.click();
+  }
+});
+
+if (importJsonInput instanceof HTMLInputElement) {
+  importJsonInput.addEventListener("change", async () => {
+    const file = importJsonInput.files?.[0];
+    if (!file) return;
+
+    try {
+      const result = await parseImportedFile(file);
+
+      // Standalone mode: import directly into active local sheet
+      if (!obrConnected) {
+        character = result.entries[0].character;
+        saveLocalState(character);
+        editingCardIds.clear();
+        selectedExperienceIds.clear();
+        renderFullSheet();
+        return;
+      }
+
+      await roomSaver.flushSave();
+
+      // Party backup file (multiple characters)
+      if (result.kind === "party" && result.entries.length > 1) {
+        if (!canManagePartySheets()) return;
+        /** @type {Record<string, import("./state.js").CharacterState>} */
+        const batch = {};
+        for (const entry of result.entries) {
+          const id = entry.suggestedId || makeShortId("s_");
+          batch[id] = entry.character;
+        }
+        const { patch, budget } = await previewSheetsBudget(batch);
+        if (!budget.fitsSafeLimit) {
+          showStorageWarning(
+            `Party backup needs ${(budget.totalBytes / 1024).toFixed(1)} / 16 KB and won't fit. Archive unused sheets or import characters individually.`,
+          );
+          return;
+        }
+        if (
+          !window.confirm(
+            `Import ${result.entries.length} sheets into this room? (Est. room total: ${(budget.totalBytes / 1024).toFixed(1)} / 16 KB)`,
+          )
+        ) {
+          return;
+        }
+        await OBR.room.setMetadata(patch);
+        clearStorageWarning();
+        return;
+      }
+
+      // Single character import
+      const importedChar = result.entries[0].character;
+      const newId = makeShortId("s_");
+      const [newPreview, replacePreview] = await Promise.all([
+        previewSheetsBudget({ [newId]: importedChar }),
+        previewSheetsBudget({ [activeSheetId]: importedChar }),
+      ]);
+
+      const importName = importedChar.name.trim() || "Imported Character";
+      const currentName = character.name.trim() || "current sheet";
+      const allowNew =
+        canManagePartySheets() && newPreview.budget.fitsSafeLimit;
+
+      const desc = allowNew
+        ? `Import "${importName}" as a new sheet (${(newPreview.budget.totalBytes / 1024).toFixed(1)} / 16 KB) or replace "${currentName}" in-place (${(replacePreview.budget.totalBytes / 1024).toFixed(1)} / 16 KB)?`
+        : `Room storage is too tight to add a new sheet. Replace "${currentName}" in-place with "${importName}" (${(replacePreview.budget.totalBytes / 1024).toFixed(1)} / 16 KB)?`;
+
+      const mode = await askImportMode(desc, { allowNew });
+      if (mode === "cancel") return;
+
+      const targetId = mode === "new" ? newId : activeSheetId;
+      const savedBudget = await saveSheetToRoom(targetId, importedChar);
+      lastRoomBytes = savedBudget.totalBytes;
+      clearStorageWarning();
+
+      roomSheets.set(targetId, JSON.parse(JSON.stringify(importedChar)));
+      activeSheetId = targetId;
+      character = JSON.parse(JSON.stringify(importedChar));
+      saveLocalState(character);
+      editingCardIds.clear();
+      selectedExperienceIds.clear();
+
+      renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+      updateTransferButtons();
+      renderFullSheet();
+      void refreshTokenHudUI();
+      currentSyncStatus = "synced";
+      renderSyncStatus(
+        "synced",
+        lastRoomBytes,
+        ROOM_METADATA_WARN_BYTES,
+        ROOM_METADATA_LIMIT_BYTES,
+      );
+    } catch (err) {
+      const msg =
+        err instanceof RoomQuotaError || err instanceof Error
+          ? err.message
+          : "Failed to import JSON file.";
+      showStorageWarning(msg);
     }
   });
 }
@@ -1185,12 +1492,12 @@ if (sheetEl) {
         setRollerModeBadge(result.engine === "dice-plus");
         renderDamageRollResult(result);
 
-        if (obrConnected) {
-          const prefix = character.name ? `${character.name} — ` : "";
-          await OBR.notification.show(
-            `${prefix}${result.weaponName}: ${result.total} ${result.damageType} damage (${result.notation})`,
-          );
-        }
+        // if (obrConnected) {
+        // const prefix = character.name ? `${character.name} — ` : "";
+        // await OBR.notification.show(
+        //   `${prefix}${result.weaponName}: ${result.total} ${result.damageType} damage (${result.notation})`,
+        // );
+        // }
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Unexpected damage roll error";
@@ -1206,11 +1513,18 @@ if (sheetEl) {
 OBR.onReady(async () => {
   obrConnected = true;
 
-  const [playerId, playerName, playerRole, metadata] = await Promise.all([
+  // Race SRD catalog preload (2.5s cap) so SRD cards hydrate immediately on first paint
+  const catalogReady = Promise.race([
+    loadCardCatalog(),
+    new Promise((resolve) => window.setTimeout(resolve, 2500)),
+  ]);
+
+  const [playerId, playerName, playerRole, initialMeta] = await Promise.all([
     OBR.player.getId(),
     OBR.player.getName(),
     OBR.player.getRole(),
     OBR.room.getMetadata(),
+    catalogReady,
   ]);
 
   isGM = playerRole === "GM";
@@ -1220,7 +1534,12 @@ OBR.onReady(async () => {
     badgeEl.classList.add("connected");
   }
 
-  roomSheets = extractRoomSheets(metadata);
+  // Auto-compress any legacy uncompressed sheets already in the room
+  const migration = await migrateLegacyRoomSheets(initialMeta);
+  const metadata =
+    migration.migrated > 0 ? await OBR.room.getMetadata() : initialMeta;
+
+  roomSheets = await extractRoomSheets(metadata);
   lastRoomBytes = measureMetadataBytes(metadata);
   activeSheetId = playerId;
 
@@ -1240,14 +1559,15 @@ OBR.onReady(async () => {
     );
 
     try {
-      await saveSheetToRoom(playerId, character);
-      const refreshed = await OBR.room.getMetadata();
-      lastRoomBytes = measureMetadataBytes(refreshed);
+      const budget = await saveSheetToRoom(playerId, character);
+      lastRoomBytes = budget.totalBytes;
       currentSyncStatus = "synced";
+      clearStorageWarning();
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Initial room sync failed";
       currentSyncStatus = "error";
+      showStorageWarning(msg);
       renderSyncStatus(
         "error",
         lastRoomBytes,
@@ -1259,6 +1579,7 @@ OBR.onReady(async () => {
   }
 
   renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+  updateTransferButtons();
   renderSyncStatus(
     currentSyncStatus,
     lastRoomBytes,
@@ -1267,23 +1588,30 @@ OBR.onReady(async () => {
   );
   renderFullSheet();
 
-  OBR.room.onMetadataChange((updatedMetadata) => {
-    roomSheets = extractRoomSheets(updatedMetadata);
+  OBR.room.onMetadataChange(async (updatedMetadata) => {
+    const seq = ++metadataSeq;
+    const nextSheets = await extractRoomSheets(updatedMetadata);
+    if (seq !== metadataSeq) return; // Discard stale out-of-order decode
+
+    roomSheets = nextSheets;
     lastRoomBytes = measureMetadataBytes(updatedMetadata);
 
-    // If the currently viewed sheet was deleted by someone else, switch to another available sheet
     if (!roomSheets.has(activeSheetId) && roomSheets.size > 0) {
       const fallbackId = roomSheets.keys().next().value;
       if (fallbackId) activeSheetId = fallbackId;
     }
 
     renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+    updateTransferButtons();
     renderSyncStatus(
       currentSyncStatus,
       lastRoomBytes,
       ROOM_METADATA_WARN_BYTES,
       ROOM_METADATA_LIMIT_BYTES,
     );
+
+    // Don't clobber active typing or an unsynced local draft while a save is queued/retrying
+    if (roomSaver.hasPendingSaveFor(activeSheetId)) return;
 
     const remoteSheet = roomSheets.get(activeSheetId);
     if (!remoteSheet) return;
@@ -1294,6 +1622,7 @@ OBR.onReady(async () => {
     saveLocalState(character);
     renderFullSheet();
   });
+
   await refreshTokenHudUI();
   void syncTokenHudForSheet(activeSheetId, character);
 
@@ -1303,48 +1632,7 @@ OBR.onReady(async () => {
       void syncTokenHudForSheet(activeSheetId, character);
     }
   });
+
   const isDicePlusReady = await checkDicePlusReady();
   setRollerModeBadge(isDicePlusReady);
 });
-const META_PREFIX = "daggerheart-obr-sheet/";
-const SHEET_KEY_PREFIX = `${META_PREFIX}s/`;
-const LEGACY_SHEETS_KEY = `${META_PREFIX}sheets`; // Your old monolithic key, if applicable
-
-/**
- * Safely saves one character sheet to Room Metadata with compression and pre-flight checking.
- * @param {string} sheetId
- * @param {import("./state.js").CharacterState} character
- */
-async function syncSheetToRoom(sheetId, character) {
-  // 1. Always mirror locally first so a full room NEVER loses a player's edits
-  saveLocalDraft(sheetId, character);
-
-  if (!obrConnected) return { ok: true, localOnly: true };
-
-  // 2. Dehydrate + compress
-  const slim = dehydrateCharacter(
-    character,
-    createDefaultCharacter(),
-    findMatchingSrdCardId,
-  );
-  const encoded = await compressJson(slim);
-  const patch = { [`${SHEET_KEY_PREFIX}${sheetId}`]: encoded };
-
-  // 3. Pre-flight check against ALL room metadata (including other extensions)
-  const currentMeta = await OBR.room.getMetadata();
-  const budget = inspectRoomBudget(currentMeta, patch, META_PREFIX);
-  updateStorageMeterUI(budget);
-
-  if (!budget.fitsSafeLimit) {
-    showStorageWarning(
-      `Room storage nearly full (${(budget.totalBytes / 1024).toFixed(1)} / 16 KB). ` +
-        `Changes saved locally—export JSON or archive an unused sheet to resume syncing.`,
-    );
-    return { ok: false, reason: "quota", budget };
-  }
-
-  // 4. Safe to write to Owlbear Rodeo
-  clearStorageWarning();
-  await OBR.room.setMetadata(patch);
-  return { ok: true, budget };
-}

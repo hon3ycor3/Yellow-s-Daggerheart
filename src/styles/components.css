@@ -991,4 +991,55 @@
   .overlay-scrollbar-track.is-dragging .overlay-scrollbar-thumb {
     cursor: grabbing;
   }
+  /* Room quota warning banner */
+  .storage-warning-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: 6px 8px;
+    border-radius: var(--radius-md);
+    border: 1px solid #ef4444;
+    background-color: rgba(127, 29, 29, 0.9);
+    color: #fecaca;
+    font-size: var(--text-xs);
+  }
+
+  .storage-warning-actions {
+    display: flex;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+
+  /* JSON export / import / archive bar */
+  .sheet-transfer-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .import-dialog {
+    max-width: 380px;
+    height: auto;
+  }
+
+  .import-dialog-desc {
+    margin: 0;
+    padding: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+
+  .import-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: 0 var(--space-3) var(--space-3);
+  }
 }

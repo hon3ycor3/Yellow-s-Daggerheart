@@ -1,10 +1,23 @@
-// src/storageCodec.js
+import {
+  DOMAIN_NAMES,
+  createDefaultCharacter,
+  makeShortId,
+  normalizeCharacter,
+} from "./state.js";
+import { findCatalogCard } from "./cardCatalog.js";
 
-export const ROOM_HARD_LIMIT_BYTES = 16 * 1024; // 16,384 bytes
-export const ROOM_SAFE_LIMIT_BYTES = 15 * 1024; // Leave 1 KB safety buffer
+export const ROOM_HARD_LIMIT_BYTES = 16_384;
+export const ROOM_SAFE_LIMIT_BYTES = 16_000;
 const COMPRESSED_PREFIX = "z1:";
 
 const textEncoder = new TextEncoder();
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** @param {unknown} payload */
+export function isCompressedSheetPayload(payload) {
+  return typeof payload === "string" && payload.startsWith(COMPRESSED_PREFIX);
+}
 
 /** @param {Uint8Array} bytes */
 function uint8ToBase64(bytes) {
@@ -41,15 +54,15 @@ export async function compressJson(data) {
 
 /**
  * Decompresses a `"z1:<base64>"` string back into a JS object.
- * Passes legacy uncompressed objects through untouched for smooth migration.
+ * Passes legacy uncompressed objects through untouched.
  * @param {unknown} payload
  * @returns {Promise<any>}
  */
 export async function decompressJson(payload) {
-  if (typeof payload !== "string" || !payload.startsWith(COMPRESSED_PREFIX)) {
-    return payload;
-  }
-  const bytes = base64ToUint8(payload.slice(COMPRESSED_PREFIX.length));
+  if (!isCompressedSheetPayload(payload)) return payload;
+  const bytes = base64ToUint8(
+    /** @type {string} */ (payload).slice(COMPRESSED_PREFIX.length),
+  );
   const stream = new Blob([bytes])
     .stream()
     .pipeThrough(new DecompressionStream("deflate-raw"));
@@ -58,79 +71,355 @@ export async function decompressJson(payload) {
 }
 
 /**
- * Strips top-level keys that still equal their defaults and shrinks SRD-backed
- * domain cards down to lightweight ID references.
- * @param {Record<string, any>} character
- * @param {Record<string, any>} defaults - Result of createDefaultCharacter()
- * @param {(card: any) => string | null} getSrdCardId - Returns SRD ID if unmodified SRD card, else null
+ * Returns only the keys in `obj` whose values differ from `base`.
+ * @param {Record<string, any>} obj
+ * @param {Record<string, any>} base
  */
-export function dehydrateCharacter(character, defaults, getSrdCardId) {
+function diffObject(obj, base) {
   /** @type {Record<string, any>} */
-  const slim = {};
+  const out = {};
+  let hasDiff = false;
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== base[k]) {
+      out[k] = v;
+      hasDiff = true;
+    }
+  }
+  return hasDiff ? out : null;
+}
 
-  for (const [key, value] of Object.entries(character)) {
-    if (value === undefined) continue;
+/**
+ * Builds a readable fallback card if an SRD card is loaded while offline.
+ * @param {string} id
+ * @param {string} srdId
+ * @param {"loadout" | "vault"} location
+ */
+function makeOfflineSrdFallback(id, srdId, location) {
+  const [rawDomain = "", rawSlug = ""] = srdId.split(":");
+  const domain =
+    DOMAIN_NAMES.find((d) => d.toLowerCase() === rawDomain.toLowerCase()) ??
+    "Arcana";
+  const name = rawSlug
+    ? rawSlug
+        .split("-")
+        .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
+        .join(" ")
+    : srdId;
 
-    // 1. Domain cards are usually the #1 bloat culprit (full prose paragraphs)
-    if (key === "domainCards" && Array.isArray(value)) {
-      if (value.length === 0) continue;
-      slim.domainCards = value.map((card) => {
-        const srdId = getSrdCardId(card);
-        if (srdId) {
-          // Only store the ID + play state; re-hydrate prose from bundled SRD on load
-          return card.vaulted ? { r: srdId, v: 1 } : { r: srdId };
-        }
-        return card; // Homebrew/edited card keeps full text
-      });
-      continue;
+  return {
+    id,
+    srdId,
+    name,
+    domain,
+    level: 1,
+    cardType: /** @type {const} */ ("Spell"),
+    recallCost: 0,
+    location,
+    description: "",
+    _unresolvedSrd: true,
+  };
+}
+
+/**
+ * Shortens legacy 36-char item UUIDs on a character during one-time room migration.
+ * Never touches `sheetId` (so Token HUD links stay intact).
+ * @param {import("./state.js").CharacterState} character
+ */
+export function compactLegacyItemIds(character) {
+  const clone = JSON.parse(JSON.stringify(character));
+  const shorten = (/** @type {string} */ id, /** @type {string} */ prefix) =>
+    typeof id === "string" && UUID_REGEX.test(id) ? makeShortId(prefix) : id;
+
+  if (Array.isArray(clone.experiences)) {
+    for (const item of clone.experiences) item.id = shorten(item.id, "e");
+  }
+  if (Array.isArray(clone.inventory)) {
+    for (const item of clone.inventory) item.id = shorten(item.id, "i");
+  }
+  if (Array.isArray(clone.domainCards)) {
+    for (const card of clone.domainCards) card.id = shorten(card.id, "c");
+  }
+  if (Array.isArray(clone.customHopeFeatures)) {
+    for (const feat of clone.customHopeFeatures)
+      feat.id = shorten(feat.id, "h");
+  }
+  return clone;
+}
+
+/**
+ * Strips unchanged defaults and compacts arrays/SRD cards before compression.
+ * Preserves empty arrays `[]` so normalizeCharacter() never resurrects starter items.
+ * @param {import("./state.js").CharacterState} character
+ */
+export function dehydrateCharacter(character) {
+  const defaults = createDefaultCharacter();
+  /** @type {Record<string, any>} */
+  const slim = { v: 2 };
+
+  /** @type {Array<[keyof import("./state.js").CharacterState, string]>} */
+  const scalarMap = [
+    ["name", "n"],
+    ["level", "lv"],
+    ["className", "cl"],
+    ["subclass", "sc"],
+    ["ancestry", "an"],
+    ["mixedAncestry", "ma"],
+    ["secondAncestry", "a2"],
+    ["community", "co"],
+    ["evasion", "ev"],
+    ["proficiency", "pr"],
+  ];
+
+  for (const [fullKey, shortKey] of scalarMap) {
+    if (character[fullKey] !== defaults[fullKey]) {
+      slim[shortKey] = character[fullKey];
+    }
+  }
+
+  /** @type {Array<[keyof import("./state.js").CharacterState, string]>} */
+  const objectMap = [
+    ["armor", "ar"],
+    ["traits", "tr"],
+    ["hp", "hp"],
+    ["stress", "st"],
+    ["hope", "ho"],
+    ["conditions", "cn"],
+    ["gold", "gd"],
+  ];
+
+  for (const [fullKey, shortKey] of objectMap) {
+    const diff = diffObject(
+      /** @type {Record<string, any>} */ (character[fullKey]),
+      /** @type {Record<string, any>} */ (defaults[fullKey]),
+    );
+    if (diff) slim[shortKey] = diff;
+  }
+
+  const pDiff = diffObject(character.weapons.primary, defaults.weapons.primary);
+  const sDiff = diffObject(
+    character.weapons.secondary,
+    defaults.weapons.secondary,
+  );
+  if (pDiff || sDiff) {
+    slim.wp = {
+      ...(pDiff ? { p: pDiff } : {}),
+      ...(sDiff ? { s: sDiff } : {}),
+    };
+  }
+
+  // Always serialize experiences, inventory, and domainCards (even when empty [])
+  slim.ex = (character.experiences ?? []).map((e) => [e.id, e.label, e.bonus]);
+  slim.in = (character.inventory ?? []).map((i) => [i.id, i.text]);
+
+  slim.dc = (character.domainCards ?? []).map((card) => {
+    const isVault = card.location === "vault" ? 1 : 0;
+
+    if (/** @type {any} */ (card)._unresolvedSrd && card.srdId) {
+      return [card.id, card.srdId, isVault];
     }
 
-    // 2. Skip fields identical to a fresh default sheet
-    if (JSON.stringify(value) === JSON.stringify(defaults[key])) {
-      continue;
+    if (card.srdId) {
+      const cat = findCatalogCard(card.srdId);
+      const desc = (card.description ?? "").trim();
+      if (
+        cat &&
+        card.name === cat.name &&
+        card.domain === cat.domain &&
+        card.level === cat.level &&
+        card.cardType === cat.cardType &&
+        card.recallCost === cat.recallCost &&
+        (!desc || desc === cat.description.trim())
+      ) {
+        return [card.id, card.srdId, isVault];
+      }
     }
 
-    slim[key] = value;
+    return {
+      i: card.id,
+      ...(card.srdId ? { r: card.srdId } : {}),
+      n: card.name,
+      d: card.domain,
+      lv: card.level,
+      t: card.cardType,
+      c: card.recallCost,
+      ...(isVault ? { v: 1 } : {}),
+      ...(card.description ? { x: card.description } : {}),
+    };
+  });
+
+  if (
+    Array.isArray(character.customHopeFeatures) &&
+    character.customHopeFeatures.length > 0
+  ) {
+    slim.hf = character.customHopeFeatures.map((f) => [
+      f.id,
+      f.name,
+      f.tag,
+      f.text,
+    ]);
   }
 
   return slim;
 }
 
 /**
- * Re-expands SRD card references before passing the object into your existing normalizer.
- * @param {Record<string, any>} slim
- * @param {(srdId: string) => any | null} lookupSrdCard
+ * Re-expands a dehydrated `v: 2` payload back into a normalized CharacterState.
+ * Passes legacy plain objects straight through `normalizeCharacter()`.
+ * @param {any} slim
+ * @returns {import("./state.js").CharacterState}
  */
-export function rehydrateCharacterRaw(slim, lookupSrdCard) {
-  if (!slim || typeof slim !== "object") return slim;
-  const copy = { ...slim };
-
-  if (Array.isArray(copy.domainCards)) {
-    copy.domainCards = copy.domainCards
-      .map((entry) => {
-        if (entry && typeof entry === "object" && typeof entry.r === "string") {
-          const base = lookupSrdCard(entry.r);
-          return base ? { ...base, vaulted: Boolean(entry.v) } : null;
-        }
-        return entry;
-      })
-      .filter(Boolean);
+export function rehydrateCharacterRaw(slim) {
+  if (!slim || typeof slim !== "object" || slim.v !== 2) {
+    return normalizeCharacter(slim);
   }
 
-  return copy;
+  /** @type {Record<string, any>} */
+  const raw = {};
+
+  if ("n" in slim) raw.name = slim.n;
+  if ("lv" in slim) raw.level = slim.lv;
+  if ("cl" in slim) raw.className = slim.cl;
+  if ("sc" in slim) raw.subclass = slim.sc;
+  if ("an" in slim) raw.ancestry = slim.an;
+  if ("ma" in slim) raw.mixedAncestry = slim.ma;
+  if ("a2" in slim) raw.secondAncestry = slim.a2;
+  if ("co" in slim) raw.community = slim.co;
+  if ("ev" in slim) raw.evasion = slim.ev;
+  if ("pr" in slim) raw.proficiency = slim.pr;
+
+  if (slim.ar) raw.armor = slim.ar;
+  if (slim.tr) raw.traits = slim.tr;
+  if (slim.hp) raw.hp = slim.hp;
+  if (slim.st) raw.stress = slim.st;
+  if (slim.ho) raw.hope = slim.ho;
+  if (slim.cn) raw.conditions = slim.cn;
+  if (slim.gd) raw.gold = slim.gd;
+  if (slim.wp) {
+    raw.weapons = {
+      ...(slim.wp.p ? { primary: slim.wp.p } : {}),
+      ...(slim.wp.s ? { secondary: slim.wp.s } : {}),
+    };
+  }
+
+  if (Array.isArray(slim.ex)) {
+    raw.experiences = slim.ex.map((/** @type {any[]} */ tuple) => ({
+      id: String(tuple[0] ?? makeShortId("e")),
+      label: String(tuple[1] ?? ""),
+      bonus: Number(tuple[2] ?? 2),
+    }));
+  }
+
+  if (Array.isArray(slim.in)) {
+    raw.inventory = slim.in.map((/** @type {any[]} */ tuple) => ({
+      id: String(tuple[0] ?? makeShortId("i")),
+      text: String(tuple[1] ?? ""),
+    }));
+  }
+
+  if (Array.isArray(slim.dc)) {
+    raw.domainCards = slim.dc.map((/** @type {any} */ entry) => {
+      if (Array.isArray(entry)) {
+        const id = String(entry[0] ?? makeShortId("c"));
+        const srdId = String(entry[1] ?? "");
+        const location = entry[2] ? "vault" : "loadout";
+        const cat = findCatalogCard(srdId);
+        if (cat) {
+          return {
+            id,
+            srdId,
+            name: cat.name,
+            domain: cat.domain,
+            level: cat.level,
+            cardType: cat.cardType,
+            recallCost: cat.recallCost,
+            location,
+            description: "",
+          };
+        }
+        return makeOfflineSrdFallback(id, srdId, location);
+      }
+
+      return {
+        id: String(entry.i ?? makeShortId("c")),
+        ...(entry.r ? { srdId: String(entry.r) } : {}),
+        name: String(entry.n ?? ""),
+        domain: entry.d ?? "Arcana",
+        level: Number(entry.lv ?? 1),
+        cardType: entry.t ?? "Spell",
+        recallCost: Number(entry.c ?? 0),
+        location: entry.v ? "vault" : "loadout",
+        description: String(entry.x ?? ""),
+      };
+    });
+  }
+
+  if (Array.isArray(slim.hf)) {
+    raw.customHopeFeatures = slim.hf.map((/** @type {any[]} */ tuple) => ({
+      id: String(tuple[0] ?? makeShortId("h")),
+      name: String(tuple[1] ?? "Custom Hope Feature (3 Hope)"),
+      tag: String(tuple[2] ?? "Hope Feature"),
+      text: String(tuple[3] ?? ""),
+    }));
+  }
+
+  return normalizeCharacter(raw);
+}
+
+/**
+ * Re-hydrates any offline SRD fallback cards on a sheet once loadCardCatalog() finishes.
+ * @param {import("./state.js").CharacterState} character
+ * @returns {boolean} True if at least one card was upgraded
+ */
+export function rehydrateUnresolvedSrdCards(character) {
+  let changed = false;
+  for (let i = 0; i < character.domainCards.length; i++) {
+    const card = /** @type {any} */ (character.domainCards[i]);
+    if (!card._unresolvedSrd || !card.srdId) continue;
+    const cat = findCatalogCard(card.srdId);
+    if (!cat) continue;
+    character.domainCards[i] = {
+      id: card.id,
+      srdId: card.srdId,
+      name: cat.name,
+      domain: cat.domain,
+      level: cat.level,
+      cardType: cat.cardType,
+      recallCost: cat.recallCost,
+      location: card.location,
+      description: "",
+    };
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Dehydrates + compresses a character sheet for Room Metadata storage.
+ * @param {import("./state.js").CharacterState} character
+ */
+export async function encodeSheetForRoom(character) {
+  return compressJson(dehydrateCharacter(character));
+}
+
+/**
+ * Decodes either a `"z1:..."` compressed string or a legacy uncompressed object.
+ * @param {unknown} payload
+ */
+export async function decodeSheetFromRoom(payload) {
+  const raw = await decompressJson(payload);
+  return rehydrateCharacterRaw(raw);
 }
 
 /**
  * Simulates OBR's shallow-merge Room Metadata update and returns exact UTF-8 byte counts.
- * @param {Record<string, unknown>} currentRoomMeta - From await OBR.room.getMetadata()
- * @param {Record<string, unknown>} patch - The object you plan to pass to OBR.room.setMetadata()
- * @param {string} ourPrefix - Your extension's metadata key prefix (e.g. "daggerheart-obr-sheet/")
+ * @param {Record<string, unknown>} currentRoomMeta
+ * @param {Record<string, unknown>} patch
+ * @param {string} ourPrefix
  */
 export function inspectRoomBudget(currentRoomMeta, patch, ourPrefix) {
   /** @type {Record<string, unknown>} */
   const simulated = { ...currentRoomMeta };
 
-  // OBR removes keys set to undefined during shallow merge
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) delete simulated[k];
     else simulated[k] = v;

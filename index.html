@@ -54,6 +54,14 @@
         </button>
       </div>
 
+      <div id="storage-warning-banner" class="storage-warning-banner hidden" role="alert">
+        <span id="storage-warning-text">Room storage full. Changes saved locally.</span>
+        <div class="storage-warning-actions">
+          <button type="button" id="warning-export-btn" class="small-btn">Export JSON</button>
+          <button type="button" id="warning-retry-btn" class="small-btn primary-btn">Retry Sync</button>
+        </div>
+      </div>
+
       <nav class="section-nav" aria-label="Jump to sheet section">
         <button type="button" class="jump-btn" data-target="sec-roll" title="Roll Banner" aria-label="Roll Banner">
           <i class="ra ra-perspective-dice-random" aria-hidden="true"></i>
@@ -139,6 +147,21 @@
             Proficiency
             <input id="char-proficiency" type="number" min="1" max="6" />
           </label>
+        </div>
+        <div class="sheet-transfer-bar">
+          <button type="button" id="export-sheet-btn" class="small-btn" title="Download this character as JSON">
+            Export JSON
+          </button>
+          <button type="button" id="export-party-btn" class="small-btn hidden" title="Download all room sheets as one JSON backup">
+            Export Party
+          </button>
+          <button type="button" id="import-json-btn" class="small-btn" title="Import a character or party JSON file">
+            Import JSON
+          </button>
+          <button type="button" id="archive-sheet-btn" class="small-btn danger-btn hidden" title="Export JSON backup and remove from room to free storage">
+            Archive
+          </button>
+          <input id="import-json-input" type="file" accept=".json,application/json" class="hidden" />
         </div>
       </section>
 
@@ -873,6 +896,20 @@
             Refresh
           </button>
         </footer>
+      </div>
+    </dialog>
+    <dialog id="import-mode-dialog" class="picker-modal import-dialog" aria-labelledby="import-dialog-title">
+      <div class="picker-shell">
+        <header class="picker-header">
+          <h2 id="import-dialog-title">Import Character JSON</h2>
+          <button type="button" id="import-cancel-x" class="small-btn" aria-label="Close">✕</button>
+        </header>
+        <p id="import-dialog-desc" class="import-dialog-desc"></p>
+        <div class="import-dialog-actions">
+          <button type="button" id="import-as-new-btn" class="small-btn primary-btn">Add as New Sheet</button>
+          <button type="button" id="import-replace-btn" class="small-btn">Replace Current Sheet</button>
+          <button type="button" id="import-cancel-btn" class="small-btn">Cancel</button>
+        </div>
       </div>
     </dialog>
     <script type="module" src="/src/main.js"></script>
