@@ -648,7 +648,7 @@ function syncNavOrderToGrid() {
 async function performTraitRoll(traitKey, displayLabel) {
   if (isRolling) return;
 
-  const traitModifier = character.traits[traitKey] + extraModifier;
+  const traitModifier = character.traits[traitKey];
   const activeExps = character.experiences.filter((exp) =>
     selectedExperienceIds.has(exp.id),
   );
