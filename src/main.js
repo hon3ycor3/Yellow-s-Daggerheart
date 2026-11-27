@@ -13,6 +13,7 @@ import {
   makeShortId,
   MAX_LOADOUT_CARDS,
   saveLocalState,
+  getActiveClassSheetType,
 } from "./state.js";
 import {
   createRoomSaver,
@@ -32,7 +33,12 @@ import {
   exportSingleCharacter,
   parseImportedFile,
 } from "./jsonTransfer.js";
-import { getSubclassesForClass } from "./srdData.js";
+import {
+  getSubclassesForClass,
+  COMPANION_UPGRADES,
+  getBeastformById,
+  getCharacterTier,
+} from "./srdData.js";
 import {
   populateStaticSelects,
   populateSubclassSelect,
@@ -60,6 +66,8 @@ import {
   checkDicePlusReady,
   rollDualityTrait,
   rollWeaponDamage,
+  renderClassSheet,
+  formatDamageFormula,
 } from "./roller.js";
 import { loadCardCatalog, resolveCardDescription } from "./cardCatalog.js";
 import { initCardPicker } from "./cardPicker.js";
@@ -334,6 +342,8 @@ function renderFullSheet() {
   syncInputs(character);
   renderDynamicUI(character);
   renderClassFeatures(character, editingHopeFeatureId);
+  renderClassSheet(character);
+  requestAnimationFrame(syncNavOrderToGrid);
   renderHeritageFeatures(character);
   renderRollMode(rollMode);
   renderRollType(isReactionRoll);
@@ -556,6 +566,11 @@ function commitChanges() {
   if (editingCardIds.size === 0) {
     renderDomainCards(character, activeDomainTab, editingCardIds);
   }
+
+  const classSheetEl = document.getElementById("sec-class-sheet");
+  if (classSheetEl && !classSheetEl.contains(document.activeElement)) {
+    renderClassSheet(character);
+  }
 }
 
 /**
@@ -633,7 +648,7 @@ function syncNavOrderToGrid() {
 async function performTraitRoll(traitKey, displayLabel) {
   if (isRolling) return;
 
-  const traitModifier = character.traits[traitKey];
+  const traitModifier = character.traits[traitKey] + extraModifier;
   const activeExps = character.experiences.filter((exp) =>
     selectedExperienceIds.has(exp.id),
   );
@@ -1146,6 +1161,64 @@ if (sheetEl) {
       return;
     }
 
+    if (target.classList.contains("comp-field")) {
+      const field = target.dataset.compField;
+      if (field === "name") character.companion.name = target.value;
+      else if (field === "species") character.companion.species = target.value;
+      else if (field === "attackName")
+        character.companion.attackName = target.value;
+      else if (field === "notes") character.companion.notes = target.value;
+      else if (field === "evasion")
+        character.companion.evasion = clamp(Number(target.value) || 10, 1, 30);
+      else if (field === "flatBonus") {
+        character.companion.flatBonus = Number(target.value) || 0;
+        const dmgBtn = document.querySelector(".comp-damage-btn");
+        if (dmgBtn) {
+          dmgBtn.textContent = formatDamageFormula(
+            character.proficiency,
+            character.companion.dieSides,
+            character.companion.flatBonus,
+          );
+        }
+      }
+      persistCharacter();
+      return;
+    }
+
+    if (target.classList.contains("comp-exp-label")) {
+      const exp = character.companion.experiences.find(
+        (e) => e.id === target.dataset.compExpId,
+      );
+      if (exp) {
+        exp.label = target.value;
+        persistCharacter();
+      }
+      return;
+    }
+
+    if (target.classList.contains("comp-exp-bonus")) {
+      const exp = character.companion.experiences.find(
+        (e) => e.id === target.dataset.compExpId,
+      );
+      if (exp) {
+        exp.bonus = Number(target.value) || 0;
+        persistCharacter();
+      }
+      return;
+    }
+
+    if (target.id === "beastform-custom-name") {
+      character.beastform.customName = target.value;
+      persistCharacter();
+      return;
+    }
+
+    if (target.id === "beastform-notes") {
+      character.beastform.notes = target.value;
+      persistCharacter();
+      return;
+    }
+
     if (!(target instanceof HTMLInputElement)) return;
 
     if (target.classList.contains("inv-text-input")) {
@@ -1176,6 +1249,8 @@ if (sheetEl) {
     } else if (target.id === "char-level") {
       character.level = clamp(num, 1, 10);
       renderClassFeatures(character, editingHopeFeatureId);
+      renderClassSheet(character);
+      requestAnimationFrame(syncNavOrderToGrid);
     } else if (target.id === "char-evasion") {
       character.evasion = num;
     } else if (target.id === "char-proficiency") {
@@ -1218,12 +1293,44 @@ if (sheetEl) {
     const target = event.target;
 
     if (target instanceof HTMLSelectElement) {
+      if (target.classList.contains("comp-field")) {
+        const field = target.dataset.compField;
+        if (field === "attackTrait" && isTraitKey(target.value)) {
+          character.companion.attackTrait = target.value;
+        } else if (field === "attackRange") {
+          character.companion.attackRange = target.value;
+        } else if (field === "dieSides") {
+          character.companion.dieSides = Math.max(4, Number(target.value) || 6);
+        }
+        persistCharacter();
+        renderClassSheet(character);
+        return;
+      }
+
+      if (target.id === "beastform-select") {
+        character.beastform.formId = target.value;
+        persistCharacter();
+        renderClassSheet(character);
+        return;
+      }
+
+      if (target.id === "beastform-evo-trait") {
+        character.beastform.evolutionTrait = isTraitKey(target.value)
+          ? target.value
+          : "";
+        persistCharacter();
+        renderClassSheet(character);
+        return;
+      }
+
       if (target.id === "char-class") {
         character.className = target.value;
         const subclasses = getSubclassesForClass(character.className);
         character.subclass = subclasses[0];
         populateSubclassSelect(character.className, character.subclass);
         renderClassFeatures(character, editingHopeFeatureId);
+        renderClassSheet(character);
+        requestAnimationFrame(syncNavOrderToGrid);
         commitChanges();
         return;
       }
@@ -1231,6 +1338,8 @@ if (sheetEl) {
       if (target.id === "char-subclass") {
         character.subclass = target.value;
         renderClassFeatures(character, editingHopeFeatureId);
+        renderClassSheet(character);
+        requestAnimationFrame(syncNavOrderToGrid);
         commitChanges();
         return;
       }
@@ -1271,6 +1380,19 @@ if (sheetEl) {
       character.mixedAncestry = target.checked;
       renderHeritageFeatures(character);
       commitChanges();
+      return;
+    }
+
+    if (
+      target instanceof HTMLInputElement &&
+      target.classList.contains("comp-upgrade-check")
+    ) {
+      const upId = target.dataset.upgradeId;
+      if (upId) {
+        character.companion.upgrades[upId] = target.checked ? 1 : 0;
+        persistCharacter();
+        renderClassSheet(character);
+      }
       return;
     }
 
@@ -1341,6 +1463,11 @@ if (sheetEl) {
           character.armor.slotsMarked,
           index,
         );
+      } else if (track === "companion-stress") {
+        character.companion.stress.marked = togglePipCount(
+          character.companion.stress.marked,
+          index,
+        );
       }
 
       commitChanges();
@@ -1368,6 +1495,16 @@ if (sheetEl) {
         character.armor.slotsMarked = Math.min(
           character.armor.slotsMarked,
           character.armor.score,
+        );
+      } else if (vital === "companion-stress") {
+        character.companion.stress.max = clamp(
+          character.companion.stress.max + delta,
+          1,
+          10,
+        );
+        character.companion.stress.marked = Math.min(
+          character.companion.stress.marked,
+          character.companion.stress.max,
         );
       }
 
@@ -1726,6 +1863,191 @@ if (sheetEl) {
       } finally {
         isRolling = false;
         setRollingState(false);
+      }
+    } else if (target.id === "add-comp-exp-btn") {
+      character.companion.experiences.push({
+        id: makeShortId("ce"),
+        label: "",
+        bonus: 2,
+      });
+      persistCharacter();
+      renderClassSheet(character);
+    } else if (target.classList.contains("comp-exp-remove-btn")) {
+      const id = target.dataset.compExpId;
+      if (id) {
+        character.companion.experiences =
+          character.companion.experiences.filter((e) => e.id !== id);
+        persistCharacter();
+        renderClassSheet(character);
+      }
+    } else if (target.classList.contains("comp-upgrade-step")) {
+      const upId = target.dataset.upgradeId;
+      const delta = Number(target.dataset.delta) || 0;
+      const spec = COMPANION_UPGRADES.find((u) => u.id === upId);
+      if (upId && spec) {
+        const cur = Number(character.companion.upgrades[upId] ?? 0) || 0;
+        character.companion.upgrades[upId] = clamp(
+          cur + delta,
+          0,
+          spec.maxPicks,
+        );
+        persistCharacter();
+        renderClassSheet(character);
+      }
+    } else if (target.classList.contains("comp-attack-btn")) {
+      const comp = character.companion;
+      const who = comp.name.trim() || comp.species.trim() || "Companion";
+      const atk = comp.attackName.trim() || "Attack";
+      await performTraitRoll(comp.attackTrait, `${who} — ${atk}`);
+    } else if (target.classList.contains("comp-damage-btn")) {
+      if (isRolling) return;
+      const comp = character.companion;
+      const who = comp.name.trim() || comp.species.trim() || "Companion";
+      const atk = comp.attackName.trim() || "Attack";
+      isRolling = true;
+      setRollingState(true, `${who} Damage`);
+      try {
+        const result = await rollWeaponDamage(
+          `${who} (${atk})`,
+          character.proficiency,
+          comp.dieSides,
+          comp.flatBonus,
+          "Physical",
+        );
+        setRollerModeBadge(result.engine === "dice-plus");
+        renderDamageRollResult(result);
+      } catch (err) {
+        renderRollError(
+          err instanceof Error ? err.message : "Unexpected damage roll error",
+        );
+      } finally {
+        isRolling = false;
+        setRollingState(false);
+      }
+    } else if (target.id === "beastform-transform-btn") {
+      if (character.stress.marked < character.stress.max) {
+        character.stress.marked += 1;
+        character.beastform.active = true;
+        character.beastform.evolutionTrait = "";
+        commitChanges();
+        renderClassSheet(character);
+      }
+    } else if (target.id === "beastform-evolution-btn") {
+      if (character.hope.current >= 3) {
+        const form = getBeastformById(character.beastform.formId);
+        character.hope.current -= 3;
+        character.beastform.active = true;
+        character.beastform.evolutionTrait = form.bonusTrait;
+        commitChanges();
+        renderClassSheet(character);
+      }
+    } else if (target.id === "beastform-drop-btn") {
+      character.beastform.active = false;
+      character.beastform.evolutionTrait = "";
+      commitChanges();
+      renderClassSheet(character);
+    } else if (target.classList.contains("bf-attack-btn")) {
+      const form = getBeastformById(character.beastform.formId);
+      let extra = 0;
+      if (form.bonusTrait === form.attackTrait) extra += form.traitBonus;
+      if (
+        character.beastform.active &&
+        character.beastform.evolutionTrait === form.attackTrait
+      ) {
+        extra += 1;
+      }
+      const creature = character.beastform.customName.trim() || form.name;
+      await performTraitRoll(form.attackTrait, `${creature} Attack`, extra);
+    } else if (target.classList.contains("bf-damage-btn")) {
+      if (isRolling) return;
+      const form = getBeastformById(character.beastform.formId);
+      const creature = character.beastform.customName.trim() || form.name;
+      isRolling = true;
+      setRollingState(true, `${creature} Damage`);
+      try {
+        const result = await rollWeaponDamage(
+          creature,
+          character.proficiency,
+          form.dieSides,
+          form.flatBonus,
+          form.damageType,
+        );
+        setRollerModeBadge(result.engine === "dice-plus");
+        renderDamageRollResult(result);
+      } catch (err) {
+        renderRollError(
+          err instanceof Error ? err.message : "Unexpected damage roll error",
+        );
+      } finally {
+        isRolling = false;
+        setRollingState(false);
+      }
+    } else if (target.id === "class-sheet-ping-btn") {
+      const sheetType = getActiveClassSheetType(character);
+      if (sheetType === "companion") {
+        const c = character.companion;
+        const dmg = formatDamageFormula(
+          character.proficiency,
+          c.dieSides,
+          c.flatBonus,
+        );
+        const exps = c.experiences
+          .filter((e) => e.label.trim())
+          .map((e) => `${e.label.trim()} (+${e.bonus})`)
+          .join(", ");
+        const ups = COMPANION_UPGRADES.filter(
+          (u) => (Number(c.upgrades?.[u.id] ?? 0) || 0) > 0,
+        )
+          .map((u) => {
+            const cnt = Number(c.upgrades[u.id]);
+            return cnt > 1 ? `${u.name} ×${cnt}` : u.name;
+          })
+          .join(", ");
+        const lines = [
+          `Evasion: ${c.evasion} • Stress: ${c.stress.marked}/${c.stress.max}`,
+          `Attack: ${c.attackName || "Attack"} (${c.attackRange}, ${dmg} Physical)`,
+        ];
+        if (exps) lines.push(`Experiences: ${exps}`);
+        if (ups) lines.push(`Upgrades: ${ups}`);
+        if (c.notes.trim()) lines.push(c.notes.trim());
+
+        await triggerFeaturePing(target, {
+          category: "Companion",
+          accent: "subclass",
+          title: c.name.trim() || "Ranger's Companion",
+          tag: c.species.trim()
+            ? `Beastbound • ${c.species.trim()}`
+            : "Beastbound Companion",
+          text: lines.join("\n"),
+        });
+      } else if (sheetType === "beastform") {
+        const bf = character.beastform;
+        const form = getBeastformById(bf.formId);
+        const dmg = formatDamageFormula(
+          character.proficiency,
+          form.dieSides,
+          form.flatBonus,
+        );
+        const traitCap =
+          form.bonusTrait.charAt(0).toUpperCase() + form.bonusTrait.slice(1);
+        const lines = [
+          `${traitCap} +${form.traitBonus} • Evasion +${form.evasionBonus} (${character.evasion + form.evasionBonus}) • ${form.attackRange} ${dmg} ${form.damageType}`,
+          `Advantage on: ${form.advantages.join(", ")}`,
+          ...form.features.map((f) => `${f.name}: ${f.text}`),
+        ];
+        if (bf.notes.trim()) lines.push(`Notes: ${bf.notes.trim()}`);
+
+        await triggerFeaturePing(target, {
+          category: "Beastform",
+          accent: "sage",
+          title: bf.customName.trim()
+            ? `${bf.customName.trim()} (${form.name})`
+            : form.name,
+          tag: bf.active
+            ? `Active Beastform • Tier ${form.tier}`
+            : `Beastform • Tier ${form.tier}`,
+          text: lines.join("\n"),
+        });
       }
     }
   });

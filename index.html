@@ -81,6 +81,9 @@
         <button type="button" class="jump-btn" data-target="sec-features" title="Class & Subclass Features" aria-label="Class & Subclass Features">
           <i class="ra ra-fairy-wand" aria-hidden="true"></i>
         </button>
+        <button type="button" id="jump-class-sheet" class="jump-btn hidden" data-target="sec-class-sheet" title="Class Sheet" aria-label="Class Sheet">
+          <i class="ra ra-pawprint" aria-hidden="true"></i>
+        </button>
         <button type="button" class="jump-btn" data-target="sec-heritage" title="Heritage" aria-label="Heritage">
           <i class="ra ra-sprout" aria-hidden="true"></i>
         </button>
@@ -505,6 +508,26 @@
         <button type="button" id="add-hope-feature-btn" class="small-btn">
             + Hope Feature
           </button>
+      </section>
+
+      <section id="sec-class-sheet" class="card hidden">
+        <div class="section-header">
+          <h2 id="class-sheet-title" class="section-title">
+            <i class="ra ra-pawprint" aria-hidden="true"></i> Class Sheet
+          </h2>
+          <div class="class-sheet-header-actions">
+            <span id="class-sheet-badge" class="domain-pill"></span>
+            <button
+              type="button"
+              id="class-sheet-ping-btn"
+              class="small-btn ping-btn"
+              title="Ping to party chat"
+            >
+              <i class="ra ra-bell" aria-hidden="true"></i> Ping
+            </button>
+          </div>
+        </div>
+        <div id="class-sheet-body" class="class-sheet-body"></div>
       </section>
 
       <section id="sec-heritage" class="card">

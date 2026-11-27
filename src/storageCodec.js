@@ -259,6 +259,59 @@ export function dehydrateCharacter(character) {
     ]);
   }
 
+  // Companion (only serialize if modified from defaults)
+  if (character.companion) {
+    const compDef = defaults.companion;
+    const c = character.companion;
+    /** @type {Record<string, any>} */
+    const cp = {};
+    if (c.name !== compDef.name) cp.n = c.name;
+    if (c.species !== compDef.species) cp.sp = c.species;
+    if (c.evasion !== compDef.evasion) cp.ev = c.evasion;
+    const stDiff = diffObject(c.stress, compDef.stress);
+    if (stDiff) cp.st = stDiff;
+    if (c.attackName !== compDef.attackName) cp.an = c.attackName;
+    if (c.attackTrait !== compDef.attackTrait) cp.at = c.attackTrait;
+    if (c.attackRange !== compDef.attackRange) cp.ar = c.attackRange;
+    if (c.dieSides !== compDef.dieSides) cp.ds = c.dieSides;
+    if (c.flatBonus !== compDef.flatBonus) cp.fb = c.flatBonus;
+    if (c.notes !== compDef.notes) cp.nt = c.notes;
+
+    const expTuples = (c.experiences ?? []).map((e) => [
+      e.id,
+      e.label,
+      e.bonus,
+    ]);
+    const defExpTuples = compDef.experiences.map((e) => [
+      e.id,
+      e.label,
+      e.bonus,
+    ]);
+    if (JSON.stringify(expTuples) !== JSON.stringify(defExpTuples)) {
+      cp.ex = expTuples;
+    }
+
+    const activeUpgrades = Object.fromEntries(
+      Object.entries(c.upgrades ?? {}).filter(([, count]) => Number(count) > 0),
+    );
+    if (Object.keys(activeUpgrades).length > 0) {
+      cp.up = activeUpgrades;
+    }
+
+    if (Object.keys(cp).length > 0) {
+      slim.cp = cp;
+    }
+  }
+
+  // Beastform (only serialize if modified from defaults)
+  if (character.beastform) {
+    const bfDiff = diffObject(
+      /** @type {Record<string, any>} */ (character.beastform),
+      /** @type {Record<string, any>} */ (defaults.beastform),
+    );
+    if (bfDiff) slim.bf = bfDiff;
+  }
+
   return slim;
 }
 
@@ -360,6 +413,37 @@ export function rehydrateCharacterRaw(slim) {
       tag: String(tuple[2] ?? "Hope Feature"),
       text: String(tuple[3] ?? ""),
     }));
+  }
+
+  if (slim.cp && typeof slim.cp === "object") {
+    const cp = slim.cp;
+    /** @type {Record<string, any>} */
+    const comp = {};
+    if ("n" in cp) comp.name = cp.n;
+    if ("sp" in cp) comp.species = cp.sp;
+    if ("ev" in cp) comp.evasion = cp.ev;
+    if (cp.st) comp.stress = cp.st;
+    if ("an" in cp) comp.attackName = cp.an;
+    if ("at" in cp) comp.attackTrait = cp.at;
+    if ("ar" in cp) comp.attackRange = cp.ar;
+    if ("ds" in cp) comp.dieSides = cp.ds;
+    if ("fb" in cp) comp.flatBonus = cp.fb;
+    if ("nt" in cp) comp.notes = cp.nt;
+    if (Array.isArray(cp.ex)) {
+      comp.experiences = cp.ex.map((/** @type {any[]} */ tuple) => ({
+        id: String(tuple[0] ?? makeShortId("ce")),
+        label: String(tuple[1] ?? ""),
+        bonus: Number(tuple[2] ?? 2),
+      }));
+    }
+    if (cp.up && typeof cp.up === "object") {
+      comp.upgrades = cp.up;
+    }
+    raw.companion = comp;
+  }
+
+  if (slim.bf && typeof slim.bf === "object") {
+    raw.beastform = slim.bf;
   }
 
   return normalizeCharacter(raw);

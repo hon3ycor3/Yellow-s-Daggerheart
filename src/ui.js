@@ -3,6 +3,7 @@ import {
   DOMAIN_NAMES,
   getThresholds,
   MAX_LOADOUT_CARDS,
+  getActiveClassSheetType,
 } from "./state.js";
 import { formatDamageFormula } from "./roller.js";
 import {
@@ -14,6 +15,10 @@ import {
   getCommunityData,
   getSubclassesForClass,
   getUnlockedSubclassTiers,
+  COMPANION_UPGRADES,
+  getBeastformById,
+  getCharacterTier,
+  SRD_BEASTFORMS,
 } from "./srdData.js";
 import { isCardCatalogLoaded, resolveCardDescription } from "./cardCatalog.js";
 
@@ -477,6 +482,572 @@ export function renderClassFeatures(character, editingHopeFeatureId = null) {
       listEl.insertBefore(itemEl, insertAnchor);
     }
   }
+}
+
+/**
+ * Renders the conditional Class/Subclass sub-sheet (Beastbound Companion or Druid Beastforms)
+ * and hides the section entirely for classes that do not require an extra sheet.
+ * @param {import("./state.js").CharacterState} character
+ */
+export function renderClassSheet(character) {
+  const sectionEl = document.getElementById("sec-class-sheet");
+  const titleEl = document.getElementById("class-sheet-title");
+  const badgeEl = document.getElementById("class-sheet-badge");
+  const bodyEl = document.getElementById("class-sheet-body");
+  const jumpBtn = document.getElementById("jump-class-sheet");
+  if (!sectionEl || !bodyEl) return;
+
+  const sheetType = getActiveClassSheetType(character);
+  sectionEl.classList.toggle("hidden", sheetType === null);
+
+  if (!sheetType) {
+    bodyEl.replaceChildren();
+    return;
+  }
+
+  if (sheetType === "companion") {
+    if (titleEl) {
+      titleEl.innerHTML = `<i class="ra ra-pawprint" aria-hidden="true"></i> Ranger's Companion`;
+    }
+    if (jumpBtn) {
+      jumpBtn.title = "Ranger's Companion";
+      jumpBtn.setAttribute("aria-label", "Ranger's Companion");
+    }
+    if (badgeEl) {
+      badgeEl.textContent = "Beastbound";
+    }
+    renderCompanionBody(bodyEl, character);
+  } else if (sheetType === "beastform") {
+    const tier = getCharacterTier(character.level);
+    if (titleEl) {
+      titleEl.innerHTML = `<i class="ra ra-pawprint" aria-hidden="true"></i> Druid Beastforms`;
+    }
+    if (jumpBtn) {
+      jumpBtn.title = "Druid Beastforms";
+      jumpBtn.setAttribute("aria-label", "Druid Beastforms");
+    }
+    if (badgeEl) {
+      badgeEl.textContent = character.beastform.active
+        ? `Active • Tier 1–${tier}`
+        : `Tier 1–${tier} Unlocked`;
+    }
+    renderBeastformBody(bodyEl, character);
+  }
+}
+
+/**
+ * @param {HTMLElement} bodyEl
+ * @param {import("./state.js").CharacterState} character
+ */
+function renderCompanionBody(bodyEl, character) {
+  const comp = character.companion;
+  bodyEl.replaceChildren();
+
+  // Name & Species
+  const idGrid = document.createElement("div");
+  idGrid.className = "grid-2";
+
+  const nameLabel = document.createElement("label");
+  nameLabel.textContent = "Companion Name";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.className = "comp-field";
+  nameInput.dataset.compField = "name";
+  nameInput.placeholder = "e.g. Fang, Pip";
+  nameInput.value = comp.name;
+  nameLabel.appendChild(nameInput);
+
+  const speciesLabel = document.createElement("label");
+  speciesLabel.textContent = "Species / Type";
+  const speciesInput = document.createElement("input");
+  speciesInput.type = "text";
+  speciesInput.className = "comp-field";
+  speciesInput.dataset.compField = "species";
+  speciesInput.placeholder = "e.g. Dire Wolf, Owl";
+  speciesInput.value = comp.species;
+  speciesLabel.appendChild(speciesInput);
+
+  idGrid.append(nameLabel, speciesLabel);
+
+  // Evasion + Stress Pips
+  const statsRow = document.createElement("div");
+  statsRow.className = "companion-stats-bar";
+
+  const evLabel = document.createElement("label");
+  evLabel.className = "companion-evasion-label";
+  evLabel.textContent = "Evasion";
+  const evInput = document.createElement("input");
+  evInput.type = "number";
+  evInput.min = "1";
+  evInput.max = "30";
+  evInput.className = "comp-field";
+  evInput.dataset.compField = "evasion";
+  evInput.value = String(comp.evasion);
+  evLabel.appendChild(evInput);
+
+  const stressRow = document.createElement("div");
+  stressRow.className = "track-row companion-stress-row";
+
+  const labelGroup = document.createElement("div");
+  labelGroup.className = "track-label-group";
+  const stressText = document.createElement("span");
+  stressText.textContent = "Stress";
+
+  const stepper = document.createElement("div");
+  stepper.className = "max-stepper";
+  const minusBtn = document.createElement("button");
+  minusBtn.type = "button";
+  minusBtn.className = "vital-max-btn";
+  minusBtn.dataset.vital = "companion-stress";
+  minusBtn.dataset.delta = "-1";
+  minusBtn.setAttribute("aria-label", "Decrease companion max Stress");
+  minusBtn.textContent = "−";
+
+  const plusBtn = document.createElement("button");
+  plusBtn.type = "button";
+  plusBtn.className = "vital-max-btn";
+  plusBtn.dataset.vital = "companion-stress";
+  plusBtn.dataset.delta = "1";
+  plusBtn.setAttribute("aria-label", "Increase companion max Stress");
+  plusBtn.textContent = "+";
+
+  stepper.append(minusBtn, plusBtn);
+  labelGroup.append(stressText, stepper);
+
+  const pipsWrap = document.createElement("div");
+  pipsWrap.id = "companion-stress-pips";
+  pipsWrap.className = "pips";
+
+  stressRow.append(labelGroup, pipsWrap);
+  statsRow.append(evLabel, stressRow);
+
+  // Companion Attack Block
+  const atkBlock = document.createElement("div");
+  atkBlock.className = "weapon-block";
+
+  const atkHeader = document.createElement("div");
+  atkHeader.className = "weapon-header-row";
+
+  const atkName = document.createElement("input");
+  atkName.type = "text";
+  atkName.className = "comp-field";
+  atkName.dataset.compField = "attackName";
+  atkName.placeholder = "Companion attack (e.g. Bite, Claws)";
+  atkName.value = comp.attackName;
+
+  const atkBtn = document.createElement("button");
+  atkBtn.type = "button";
+  atkBtn.className = "weapon-attack-btn companion-roll-btn comp-attack-btn";
+  atkBtn.textContent = "Atk";
+
+  const dmgBtn = document.createElement("button");
+  dmgBtn.type = "button";
+  dmgBtn.className = "weapon-damage-btn companion-roll-btn comp-damage-btn";
+  dmgBtn.textContent = formatDamageFormula(
+    character.proficiency,
+    comp.dieSides,
+    comp.flatBonus,
+  );
+
+  atkHeader.append(atkName, atkBtn, dmgBtn);
+
+  const atkGrid = document.createElement("div");
+  atkGrid.className = "companion-atk-grid";
+
+  const traitSelect = document.createElement("select");
+  traitSelect.className = "comp-field";
+  traitSelect.dataset.compField = "attackTrait";
+  traitSelect.setAttribute("aria-label", "Command trait");
+  for (const t of [
+    "agility",
+    "strength",
+    "finesse",
+    "instinct",
+    "presence",
+    "knowledge",
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = t;
+    opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    traitSelect.appendChild(opt);
+  }
+  traitSelect.value = comp.attackTrait;
+
+  const rangeSelect = document.createElement("select");
+  rangeSelect.className = "comp-field";
+  rangeSelect.dataset.compField = "attackRange";
+  rangeSelect.setAttribute("aria-label", "Companion attack range");
+  for (const r of ["Melee", "Very Close", "Close", "Far", "Very Far"]) {
+    const opt = document.createElement("option");
+    opt.value = r;
+    opt.textContent = r;
+    rangeSelect.appendChild(opt);
+  }
+  rangeSelect.value = comp.attackRange;
+
+  const dieSelect = document.createElement("select");
+  dieSelect.className = "comp-field";
+  dieSelect.dataset.compField = "dieSides";
+  dieSelect.setAttribute("aria-label", "Companion damage die");
+  for (const d of [6, 8, 10, 12]) {
+    const opt = document.createElement("option");
+    opt.value = String(d);
+    opt.textContent = `d${d}`;
+    dieSelect.appendChild(opt);
+  }
+  dieSelect.value = String(comp.dieSides);
+
+  const bonusInput = document.createElement("input");
+  bonusInput.type = "number";
+  bonusInput.className = "comp-field";
+  bonusInput.dataset.compField = "flatBonus";
+  bonusInput.placeholder = "+0";
+  bonusInput.setAttribute("aria-label", "Companion flat damage bonus");
+  bonusInput.value = String(comp.flatBonus);
+
+  atkGrid.append(traitSelect, rangeSelect, dieSelect, bonusInput);
+  atkBlock.append(atkHeader, atkGrid);
+
+  // Companion Experiences
+  const expHeader = document.createElement("div");
+  expHeader.className = "section-header";
+  const expTitle = document.createElement("strong");
+  expTitle.className = "sub-section-title";
+  expTitle.textContent = "Companion Experiences";
+  const addExpBtn = document.createElement("button");
+  addExpBtn.type = "button";
+  addExpBtn.id = "add-comp-exp-btn";
+  addExpBtn.className = "small-btn";
+  addExpBtn.textContent = "+ Add";
+  expHeader.append(expTitle, addExpBtn);
+
+  const expList = document.createElement("div");
+  expList.className = "exp-list";
+  for (const exp of comp.experiences) {
+    const row = document.createElement("div");
+    row.className = "comp-exp-row";
+
+    const lbl = document.createElement("input");
+    lbl.type = "text";
+    lbl.className = "comp-exp-label";
+    lbl.dataset.compExpId = exp.id;
+    lbl.placeholder = "Companion experience...";
+    lbl.value = exp.label;
+
+    const bon = document.createElement("input");
+    bon.type = "number";
+    bon.className = "comp-exp-bonus";
+    bon.dataset.compExpId = exp.id;
+    bon.value = String(exp.bonus);
+
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "exp-remove-btn comp-exp-remove-btn";
+    rm.dataset.compExpId = exp.id;
+    rm.textContent = "×";
+    rm.setAttribute("aria-label", "Remove companion experience");
+
+    row.append(lbl, bon, rm);
+    expList.appendChild(row);
+  }
+
+  // Companion Level-Up Upgrades
+  const upDetails = document.createElement("details");
+  upDetails.className = "companion-upgrades-box";
+  const activeCount = Object.values(comp.upgrades ?? {}).reduce(
+    (sum, n) => sum + (Number(n) || 0),
+    0,
+  );
+  const upSummary = document.createElement("summary");
+  upSummary.textContent = `Companion Level-Up Upgrades (${activeCount} taken)`;
+  upDetails.appendChild(upSummary);
+
+  const upList = document.createElement("div");
+  upList.className = "companion-upgrades-list";
+  for (const up of COMPANION_UPGRADES) {
+    const count = Math.max(
+      0,
+      Math.min(up.maxPicks, Number(comp.upgrades?.[up.id] ?? 0) || 0),
+    );
+    const row = document.createElement("div");
+    row.className = `companion-upgrade-row${count > 0 ? " taken" : ""}`;
+
+    const info = document.createElement("div");
+    info.className = "companion-upgrade-info";
+    const strong = document.createElement("strong");
+    strong.textContent = up.name;
+    const desc = document.createElement("p");
+    desc.textContent = up.text;
+    info.append(strong, desc);
+
+    const ctrl = document.createElement("div");
+    ctrl.className = "companion-upgrade-ctrl";
+    if (up.maxPicks === 1) {
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "exp-check comp-upgrade-check";
+      cb.dataset.upgradeId = up.id;
+      cb.checked = count > 0;
+      ctrl.appendChild(cb);
+    } else {
+      const dec = document.createElement("button");
+      dec.type = "button";
+      dec.className = "vital-max-btn comp-upgrade-step";
+      dec.dataset.upgradeId = up.id;
+      dec.dataset.delta = "-1";
+      dec.disabled = count <= 0;
+      dec.textContent = "−";
+
+      const val = document.createElement("span");
+      val.className = "comp-upgrade-count";
+      val.textContent = `${count}/${up.maxPicks}`;
+
+      const inc = document.createElement("button");
+      inc.type = "button";
+      inc.className = "vital-max-btn comp-upgrade-step";
+      inc.dataset.upgradeId = up.id;
+      inc.dataset.delta = "1";
+      inc.disabled = count >= up.maxPicks;
+      inc.textContent = "+";
+
+      ctrl.append(dec, val, inc);
+    }
+
+    row.append(info, ctrl);
+    upList.appendChild(row);
+  }
+  upDetails.appendChild(upList);
+
+  // Notes
+  const notesLabel = document.createElement("label");
+  notesLabel.textContent = "Companion Notes / Bond";
+  const notesInput = document.createElement("textarea");
+  notesInput.className = "comp-field";
+  notesInput.dataset.compField = "notes";
+  notesInput.rows = 2;
+  notesInput.placeholder = "Appearance, quirks, or bond details...";
+  notesInput.value = comp.notes;
+  notesLabel.appendChild(notesInput);
+
+  bodyEl.append(
+    idGrid,
+    statsRow,
+    atkBlock,
+    expHeader,
+    expList,
+    upDetails,
+    notesLabel,
+  );
+
+  // Render stress pips into the newly appended container
+  renderPips(
+    "companion-stress-pips",
+    "companion-stress",
+    comp.stress.marked,
+    comp.stress.max,
+  );
+}
+
+/**
+ * @param {HTMLElement} bodyEl
+ * @param {import("./state.js").CharacterState} character
+ */
+function renderBeastformBody(bodyEl, character) {
+  const bf = character.beastform;
+  const maxTier = getCharacterTier(character.level);
+  const availableForms = SRD_BEASTFORMS.filter((f) => f.tier <= maxTier);
+  let selectedForm = getBeastformById(bf.formId);
+  if (selectedForm.tier > maxTier) {
+    selectedForm = availableForms[0];
+  }
+
+  bodyEl.replaceChildren();
+
+  // Form Picker + Flavor Name
+  const pickerGrid = document.createElement("div");
+  pickerGrid.className = "grid-2";
+
+  const formLabel = document.createElement("label");
+  formLabel.textContent = "Beastform Preset";
+  const select = document.createElement("select");
+  select.id = "beastform-select";
+  for (const tier of /** @type {const} */ ([1, 2, 3, 4])) {
+    if (tier > maxTier) continue;
+    const group = document.createElement("optgroup");
+    group.label = `Tier ${tier}`;
+    for (const form of availableForms.filter((f) => f.tier === tier)) {
+      const opt = document.createElement("option");
+      opt.value = form.id;
+      opt.textContent = form.name;
+      group.appendChild(opt);
+    }
+    select.appendChild(group);
+  }
+  select.value = selectedForm.id;
+  formLabel.appendChild(select);
+
+  const flavorLabel = document.createElement("label");
+  flavorLabel.textContent = "Chosen Creature";
+  const flavorInput = document.createElement("input");
+  flavorInput.type = "text";
+  flavorInput.id = "beastform-custom-name";
+  flavorInput.placeholder = `e.g. ${selectedForm.examples.split(",")[0]}`;
+  flavorInput.value = bf.customName;
+  flavorLabel.appendChild(flavorInput);
+
+  pickerGrid.append(formLabel, flavorLabel);
+
+  // Transform / Evolution / Drop Action Bar
+  const actionBar = document.createElement("div");
+  actionBar.className = "beastform-actions";
+
+  if (!bf.active) {
+    const canStress = character.stress.marked < character.stress.max;
+    const canHope = character.hope.current >= 3;
+
+    const transformBtn = document.createElement("button");
+    transformBtn.type = "button";
+    transformBtn.id = "beastform-transform-btn";
+    transformBtn.className = "small-btn primary-btn";
+    transformBtn.disabled = !canStress;
+    transformBtn.textContent = "Transform (1 Stress)";
+
+    const evoBtn = document.createElement("button");
+    evoBtn.type = "button";
+    evoBtn.id = "beastform-evolution-btn";
+    evoBtn.className = "small-btn";
+    evoBtn.disabled = !canHope;
+    evoBtn.textContent = "Evolution (3 Hope, +1 Trait)";
+
+    actionBar.append(transformBtn, evoBtn);
+  } else {
+    const evoWrap = document.createElement("label");
+    evoWrap.className = "beastform-evo-select";
+    evoWrap.textContent = "Evolution +1 Trait";
+    const evoSelect = document.createElement("select");
+    evoSelect.id = "beastform-evo-trait";
+    const noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "None (1 Stress form)";
+    evoSelect.appendChild(noneOpt);
+    for (const t of [
+      "agility",
+      "strength",
+      "finesse",
+      "instinct",
+      "presence",
+      "knowledge",
+    ]) {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = `+1 ${t.charAt(0).toUpperCase() + t.slice(1)}`;
+      evoSelect.appendChild(opt);
+    }
+    evoSelect.value = bf.evolutionTrait || "";
+    evoWrap.appendChild(evoSelect);
+
+    const dropBtn = document.createElement("button");
+    dropBtn.type = "button";
+    dropBtn.id = "beastform-drop-btn";
+    dropBtn.className = "small-btn danger-btn";
+    dropBtn.textContent = "Drop Beastform";
+
+    actionBar.append(evoWrap, dropBtn);
+  }
+
+  // Stat Card
+  const statCard = document.createElement("div");
+  statCard.className = `beastform-card${bf.active ? " is-active" : ""}`;
+
+  const traitCap =
+    selectedForm.bonusTrait.charAt(0).toUpperCase() +
+    selectedForm.bonusTrait.slice(1);
+  const atkTraitCap =
+    selectedForm.attackTrait.charAt(0).toUpperCase() +
+    selectedForm.attackTrait.slice(1);
+  const effectiveEvasion = character.evasion + selectedForm.evasionBonus;
+
+  const metaRow = document.createElement("div");
+  metaRow.className = "domain-card-meta";
+
+  const tierPill = document.createElement("span");
+  tierPill.className = "domain-pill";
+  tierPill.textContent = `Tier ${selectedForm.tier} • ${selectedForm.examples}`;
+
+  const traitPill = document.createElement("span");
+  traitPill.className = "domain-pill";
+  traitPill.textContent = `${traitCap} +${selectedForm.traitBonus}`;
+
+  const evPill = document.createElement("span");
+  evPill.className = "domain-pill";
+  evPill.textContent = `Evasion +${selectedForm.evasionBonus} (${effectiveEvasion})`;
+
+  metaRow.append(tierPill, traitPill, evPill);
+
+  // Natural Attack Roll Row
+  const atkRow = document.createElement("div");
+  atkRow.className = "beastform-atk-row";
+
+  const atkSummary = document.createElement("span");
+  atkSummary.className = "beastform-atk-label";
+  const dmgFormula = formatDamageFormula(
+    character.proficiency,
+    selectedForm.dieSides,
+    selectedForm.flatBonus,
+  );
+  atkSummary.textContent = `${selectedForm.attackRange} • ${atkTraitCap} • ${dmgFormula} ${selectedForm.damageType}`;
+
+  const atkBtns = document.createElement("div");
+  atkBtns.className = "beastform-atk-btns";
+
+  const atkRollBtn = document.createElement("button");
+  atkRollBtn.type = "button";
+  atkRollBtn.className = "weapon-attack-btn beastform-roll-btn bf-attack-btn";
+  atkRollBtn.textContent = "Atk";
+
+  const dmgRollBtn = document.createElement("button");
+  dmgRollBtn.type = "button";
+  dmgRollBtn.className = "weapon-damage-btn beastform-roll-btn bf-damage-btn";
+  dmgRollBtn.textContent = dmgFormula;
+
+  atkBtns.append(atkRollBtn, dmgRollBtn);
+  atkRow.append(atkSummary, atkBtns);
+
+  // Advantages
+  const advP = document.createElement("p");
+  advP.className = "beastform-advantages";
+  advP.textContent = `Advantage on: ${selectedForm.advantages.join(", ")}`;
+
+  // Form Features
+  const featList = document.createElement("div");
+  featList.className = "feature-stack";
+  for (const feat of selectedForm.features) {
+    const fBox = document.createElement("div");
+    fBox.className = "feature-item";
+    const fTitle = document.createElement("strong");
+    fTitle.className = "feature-item-title";
+    fTitle.textContent = feat.name;
+    const fText = document.createElement("p");
+    fText.className = "feature-item-text";
+    fText.textContent = feat.text;
+    fBox.append(fTitle, fText);
+    featList.appendChild(fBox);
+  }
+
+  statCard.append(metaRow, atkRow, advP, featList);
+
+  // Notes (especially handy for Legendary/Mythic Hybrid choices)
+  const notesLabel = document.createElement("label");
+  notesLabel.textContent = "Beastform / Hybrid Notes";
+  const notesInput = document.createElement("textarea");
+  notesInput.id = "beastform-notes";
+  notesInput.rows = 2;
+  notesInput.placeholder =
+    "Optional appearance details or Legendary/Mythic Hybrid picks...";
+  notesInput.value = bf.notes;
+  notesLabel.appendChild(notesInput);
+
+  bodyEl.append(pickerGrid, actionBar, statCard, notesLabel);
 }
 
 /**
@@ -1121,7 +1692,9 @@ export function setRollerModeBadge(isDicePlus) {
  */
 export function setRollingState(isRolling, label = "") {
   document
-    .querySelectorAll(".trait-roll-btn, .weapon-attack-btn, .weapon-damage-btn")
+    .querySelectorAll(
+      ".trait-roll-btn, .weapon-attack-btn, .weapon-damage-btn, .companion-roll-btn, .beastform-roll-btn",
+    )
     .forEach((el) => {
       if (el instanceof HTMLButtonElement) {
         el.disabled = isRolling;

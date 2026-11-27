@@ -88,6 +88,7 @@
       "experiences"
       "weapons"
       "features"
+      "class-sheet"
       "heritage"
       "cards"
       "inventory"
@@ -111,6 +112,9 @@
   }
   #sec-features {
     grid-area: features;
+  }
+  #sec-class-sheet {
+    grid-column: 1 / -1;
   }
   #sec-heritage {
     grid-area: heritage;

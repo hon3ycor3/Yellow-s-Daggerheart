@@ -187,7 +187,8 @@
   #hp-pips .pip::before {
     content: var(--pip-hp-icon);
   }
-  #stress-pips .pip::before {
+  #stress-pips .pip::before,
+  #companion-stress-pips .pip::before {
     content: var(--pip-stress-icon);
   }
   #hope-pips .pip::before {
@@ -212,7 +213,8 @@
       0.5px 0.5px 0 #fff;
   }
 
-  #stress-pips .pip.filled {
+  #stress-pips .pip.filled,
+  #companion-stress-pips .pip.filled {
     color: var(--pip-stress-bg);
     filter: drop-shadow(0 0 3px rgba(254, 180, 253, 0.4));
     text-shadow:
@@ -1136,5 +1138,172 @@
   .startup-sheet-meta {
     font-size: var(--text-xs);
     color: var(--text-secondary);
+  }
+
+  /* Conditional Class/Subclass Sheet (Companion & Beastforms) */
+  .class-sheet-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .class-sheet-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .sub-section-title {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  .companion-stats-bar {
+    display: grid;
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .companion-evasion-label {
+    margin: 0;
+  }
+
+  .companion-stress-row {
+    padding: 6px 8px;
+    border-radius: var(--radius-md);
+    background-color: var(--bg-canvas);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .companion-atk-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 0.7fr 0.7fr;
+    gap: var(--space-1);
+  }
+
+  .comp-exp-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 56px 26px;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .companion-upgrades-box {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-canvas);
+    padding: 6px 8px;
+  }
+
+  .companion-upgrades-box summary {
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .companion-upgrades-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .companion-upgrade-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .companion-upgrade-row.taken strong {
+    color: var(--accent-soft);
+  }
+
+  .companion-upgrade-info strong {
+    display: block;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+
+  .companion-upgrade-info p {
+    margin: 2px 0 0;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  .companion-upgrade-ctrl {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .comp-upgrade-count {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    min-width: 24px;
+    text-align: center;
+  }
+
+  /* Druid Beastforms */
+  .beastform-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .beastform-evo-select {
+    flex: 1 1 160px;
+  }
+
+  .beastform-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-canvas);
+    border: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--domain-sage);
+  }
+
+  .beastform-card.is-active {
+    border-color: var(--success-border);
+    box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.25);
+  }
+
+  .beastform-atk-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 5px 8px;
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-surface);
+  }
+
+  .beastform-atk-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .beastform-atk-btns {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .beastform-advantages {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--success-text);
   }
 }

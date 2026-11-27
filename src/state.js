@@ -74,6 +74,27 @@ export const DOMAIN_NAMES = /** @type {const} */ ([
  * @property {CardLocation} location
  * @property {string} description
  *
+ * @typedef {Object} CompanionState
+ * @property {string} name
+ * @property {string} species
+ * @property {number} evasion
+ * @property {{ marked: number, max: number }} stress
+ * @property {string} attackName
+ * @property {TraitKey} attackTrait
+ * @property {string} attackRange
+ * @property {number} dieSides
+ * @property {number} flatBonus
+ * @property {ExperienceItem[]} experiences
+ * @property {Record<string, number>} upgrades
+ * @property {string} notes
+ *
+ * @typedef {Object} BeastformState
+ * @property {boolean} active
+ * @property {string} formId
+ * @property {string} customName
+ * @property {TraitKey | ""} evolutionTrait
+ * @property {string} notes
+ *
  * @typedef {Object} CharacterState
  * @property {string} name
  * @property {number} level
@@ -97,6 +118,8 @@ export const DOMAIN_NAMES = /** @type {const} */ ([
  * @property {DomainCard[]} domainCards
  * @property {InventoryItem[]} inventory
  * @property {Array<{ id: string, name: string, tag: string, text: string }>} customHopeFeatures
+ * @property {CompanionState} companion
+ * @property {BeastformState} beastform
  */
 
 /**
@@ -139,6 +162,54 @@ export function createDomainCard(overrides = {}) {
     location: overrides.location ?? "loadout",
     description: overrides.description ?? "",
   };
+}
+
+/** @returns {CompanionState} */
+export function createDefaultCompanion() {
+  return {
+    name: "",
+    species: "",
+    evasion: 10,
+    stress: { marked: 0, max: 3 },
+    attackName: "Bite / Claw",
+    attackTrait: "agility",
+    attackRange: "Melee",
+    dieSides: 6,
+    flatBonus: 0,
+    experiences: [
+      { id: "ce_1", label: "Fetch / Track", bonus: 2 },
+      { id: "ce_2", label: "Guard / Scout", bonus: 2 },
+    ],
+    upgrades: {},
+    notes: "",
+  };
+}
+
+/** @returns {BeastformState} */
+export function createDefaultBeastform() {
+  return {
+    active: false,
+    formId: "agile-scout",
+    customName: "",
+    evolutionTrait: "",
+    notes: "",
+  };
+}
+
+/**
+ * Returns which conditional class/subclass sheet section should display for this character.
+ * Add new entries here whenever another class/subclass requires a dedicated sub-sheet.
+ * @param {CharacterState} character
+ * @returns {"companion" | "beastform" | null}
+ */
+export function getActiveClassSheetType(character) {
+  if (character.className === "Ranger" && character.subclass === "Beastbound") {
+    return "companion";
+  }
+  if (character.className === "Druid") {
+    return "beastform";
+  }
+  return null;
 }
 
 /** @returns {CharacterState} */
@@ -224,6 +295,8 @@ export function createDefaultCharacter() {
       createInventoryItem("50 ft. Rope"),
     ],
     customHopeFeatures: [],
+    companion: createDefaultCompanion(),
+    beastform: createDefaultBeastform(),
   };
 }
 
@@ -318,6 +391,58 @@ export function normalizeCharacter(raw) {
             text: typeof f.text === "string" ? f.text : "",
           }))
       : [],
+    companion: {
+      ...defaults.companion,
+      ...(raw.companion && typeof raw.companion === "object"
+        ? raw.companion
+        : {}),
+      stress: {
+        max: Math.max(
+          1,
+          Math.min(
+            10,
+            Number(
+              raw.companion?.stress?.max ?? defaults.companion.stress.max,
+            ) || 3,
+          ),
+        ),
+        marked: Math.max(
+          0,
+          Math.min(
+            Math.max(
+              1,
+              Math.min(
+                10,
+                Number(
+                  raw.companion?.stress?.max ?? defaults.companion.stress.max,
+                ) || 3,
+              ),
+            ),
+            Number(raw.companion?.stress?.marked ?? 0) || 0,
+          ),
+        ),
+      },
+      experiences: Array.isArray(raw.companion?.experiences)
+        ? raw.companion.experiences
+            .filter((/** @type {any} */ e) => e && typeof e === "object")
+            .map((/** @type {any} */ e, /** @type {number} */ idx) => ({
+              id: typeof e.id === "string" && e.id ? e.id : `ce_${idx}`,
+              label: typeof e.label === "string" ? e.label : "",
+              bonus: Number(e.bonus ?? 2) || 0,
+            }))
+        : defaults.companion.experiences,
+      upgrades:
+        raw.companion?.upgrades && typeof raw.companion.upgrades === "object"
+          ? { ...raw.companion.upgrades }
+          : {},
+    },
+    beastform: {
+      ...defaults.beastform,
+      ...(raw.beastform && typeof raw.beastform === "object"
+        ? raw.beastform
+        : {}),
+      active: Boolean(raw.beastform?.active),
+    },
   };
 }
 
