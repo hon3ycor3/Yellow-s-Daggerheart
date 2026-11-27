@@ -95,6 +95,12 @@ const importAsNewBtn = document.getElementById("import-as-new-btn");
 const importReplaceBtn = document.getElementById("import-replace-btn");
 const importCancelBtn = document.getElementById("import-cancel-btn");
 const importCancelX = document.getElementById("import-cancel-x");
+const startupSheetDialog = document.getElementById("startup-sheet-dialog");
+const startupSheetList = document.getElementById("startup-sheet-list");
+const startupSheetCount = document.getElementById("startup-sheet-count");
+const startupRoomBudget = document.getElementById("startup-room-budget");
+const startupSheetError = document.getElementById("startup-sheet-error");
+const startupNewSheetBtn = document.getElementById("startup-new-sheet-btn");
 
 let metadataSeq = 0;
 
@@ -361,6 +367,183 @@ async function switchToSheet(nextSheetId) {
   renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
   renderFullSheet();
   void refreshTokenHudUI();
+}
+
+/**
+ * Opens an existing room sheet by ID and closes the startup modal if open.
+ * @param {string} sheetId
+ */
+function openRoomSheet(sheetId) {
+  const targetSheet = roomSheets.get(sheetId);
+  if (!targetSheet) return;
+
+  activeSheetId = sheetId;
+  character = JSON.parse(JSON.stringify(targetSheet));
+  editingHopeFeatureId = null;
+  selectedExperienceIds.clear();
+  editingCardIds.clear();
+  rollMode = "normal";
+  isReactionRoll = false;
+
+  const dmgInput = document.getElementById("incoming-damage");
+  if (dmgInput instanceof HTMLInputElement) dmgInput.value = "";
+
+  if (
+    startupSheetDialog instanceof HTMLDialogElement &&
+    startupSheetDialog.open
+  ) {
+    startupSheetDialog.close();
+  }
+
+  renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+  updateTransferButtons();
+  renderFullSheet();
+  void refreshTokenHudUI();
+  void syncTokenHudForSheet(activeSheetId, character);
+}
+
+/**
+ * Renders the list of available room sheets inside the startup selection modal.
+ */
+function renderStartupSheetPicker() {
+  if (!startupSheetList) return;
+
+  if (startupSheetCount) {
+    const n = roomSheets.size;
+    startupSheetCount.textContent =
+      n === 1 ? "1 sheet in room" : `${n} sheets in room`;
+  }
+
+  if (startupRoomBudget && lastRoomBytes !== null) {
+    const usedKb = (lastRoomBytes / 1024).toFixed(1);
+    const limitKb = (ROOM_METADATA_LIMIT_BYTES / 1024).toFixed(0);
+    startupRoomBudget.textContent = `Room: ${usedKb}/${limitKb} KB`;
+    startupRoomBudget.classList.toggle(
+      "budget-warn",
+      lastRoomBytes >= ROOM_METADATA_WARN_BYTES,
+    );
+  }
+
+  if (startupNewSheetBtn instanceof HTMLButtonElement) {
+    startupNewSheetBtn.disabled = !canManagePartySheets();
+  }
+
+  startupSheetList.replaceChildren();
+
+  if (roomSheets.size === 0) {
+    const empty = document.createElement("div");
+    empty.className = "domain-empty";
+    empty.textContent =
+      "No character sheets in this room yet. Click + Create New Sheet below to get started.";
+    startupSheetList.appendChild(empty);
+    return;
+  }
+
+  for (const [sheetId, sheet] of roomSheets.entries()) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "startup-sheet-btn";
+    btn.dataset.sheetId = sheetId;
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "startup-sheet-name";
+    nameEl.textContent = sheet.name.trim() || "Unnamed Character";
+
+    const ancestries = sheet.mixedAncestry
+      ? `${sheet.ancestry}/${sheet.secondAncestry}`
+      : sheet.ancestry;
+
+    const metaEl = document.createElement("span");
+    metaEl.className = "startup-sheet-meta";
+    metaEl.textContent = `Lvl ${sheet.level} ${sheet.subclass} ${sheet.className} • ${sheet.community} ${ancestries}`;
+
+    btn.append(nameEl, metaEl);
+    startupSheetList.appendChild(btn);
+  }
+}
+
+/**
+ * Opens the startup selection modal (cannot be dismissed with Esc until a sheet is active).
+ */
+function openStartupSheetPicker() {
+  if (startupSheetError) {
+    startupSheetError.textContent = "";
+    startupSheetError.classList.add("hidden");
+  }
+  renderStartupSheetPicker();
+  if (
+    startupSheetDialog instanceof HTMLDialogElement &&
+    !startupSheetDialog.open
+  ) {
+    startupSheetDialog.showModal();
+  }
+}
+
+/**
+ * Creates a brand-new default character sheet (never copying localStorage),
+ * validates the 16 KB room budget, saves it to Room Metadata, and opens it.
+ * @param {{ showErrorInStartupModal?: boolean }} [opts]
+ */
+async function createAndOpenNewRoomSheet(opts = {}) {
+  if (!canManagePartySheets()) return;
+
+  await roomSaver.flushSave();
+
+  const newId = makeShortId("s_");
+  const freshSheet = createDefaultCharacter();
+  freshSheet.name = `Character ${roomSheets.size + 1}`;
+
+  const showErr = (/** @type {string} */ msg) => {
+    showStorageWarning(msg);
+    if (opts.showErrorInStartupModal && startupSheetError) {
+      startupSheetError.textContent = msg;
+      startupSheetError.classList.remove("hidden");
+    }
+    renderSyncStatus(
+      "error",
+      lastRoomBytes,
+      ROOM_METADATA_WARN_BYTES,
+      ROOM_METADATA_LIMIT_BYTES,
+      msg,
+    );
+  };
+
+  const { budget } = await previewSheetsBudget({ [newId]: freshSheet });
+  if (!budget.fitsSafeLimit) {
+    showErr(
+      `Cannot create new sheet (${(budget.totalBytes / 1024).toFixed(1)} / 16 KB). Select an existing sheet and Export & Archive an unused one first.`,
+    );
+    return;
+  }
+
+  currentSyncStatus = "saving";
+  renderSyncStatus(
+    "saving",
+    lastRoomBytes,
+    ROOM_METADATA_WARN_BYTES,
+    ROOM_METADATA_LIMIT_BYTES,
+  );
+
+  try {
+    const savedBudget = await saveSheetToRoom(newId, freshSheet);
+    lastRoomBytes = savedBudget.totalBytes;
+    clearStorageWarning();
+
+    roomSheets.set(newId, freshSheet);
+    openRoomSheet(newId);
+
+    currentSyncStatus = "synced";
+    renderSyncStatus(
+      "synced",
+      lastRoomBytes,
+      ROOM_METADATA_WARN_BYTES,
+      ROOM_METADATA_LIMIT_BYTES,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Could not create sheet";
+    currentSyncStatus = "error";
+    showErr(msg);
+  }
 }
 
 function commitChanges() {
@@ -656,75 +839,35 @@ if (sheetSelectorEl instanceof HTMLSelectElement) {
 }
 
 if (newSheetBtn instanceof HTMLButtonElement) {
-  newSheetBtn.addEventListener("click", async () => {
-    if (!canManagePartySheets()) return;
+  newSheetBtn.addEventListener("click", () => {
+    void createAndOpenNewRoomSheet();
+  });
+}
 
-    await roomSaver.flushSave();
-
-    const newId = makeShortId("s_");
-    const freshSheet = createDefaultCharacter();
-    freshSheet.name = `Character ${roomSheets.size + 1}`;
-
-    // Pre-flight check BEFORE mutating active sheet state
-    const { budget } = await previewSheetsBudget({ [newId]: freshSheet });
-    if (!budget.fitsSafeLimit) {
-      const msg = `Cannot create new sheet (${(budget.totalBytes / 1024).toFixed(1)} / 16 KB). Export & Archive an unused sheet first.`;
-      showStorageWarning(msg);
-      renderSyncStatus(
-        "error",
-        lastRoomBytes,
-        ROOM_METADATA_WARN_BYTES,
-        ROOM_METADATA_LIMIT_BYTES,
-        msg,
-      );
-      return;
-    }
-
-    currentSyncStatus = "saving";
-    renderSyncStatus(
-      "saving",
-      lastRoomBytes,
-      ROOM_METADATA_WARN_BYTES,
-      ROOM_METADATA_LIMIT_BYTES,
-    );
-
-    try {
-      const savedBudget = await saveSheetToRoom(newId, freshSheet);
-      lastRoomBytes = savedBudget.totalBytes;
-      clearStorageWarning();
-
-      roomSheets.set(newId, freshSheet);
-      activeSheetId = newId;
-      character = JSON.parse(JSON.stringify(freshSheet));
-      editingCardIds.clear();
-      selectedExperienceIds.clear();
-
-      renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
-      updateTransferButtons();
-      renderFullSheet();
-      void refreshTokenHudUI();
-
-      currentSyncStatus = "synced";
-      renderSyncStatus(
-        "synced",
-        lastRoomBytes,
-        ROOM_METADATA_WARN_BYTES,
-        ROOM_METADATA_LIMIT_BYTES,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not create sheet";
-      currentSyncStatus = "error";
-      showStorageWarning(msg);
-      renderSyncStatus(
-        "error",
-        lastRoomBytes,
-        ROOM_METADATA_WARN_BYTES,
-        ROOM_METADATA_LIMIT_BYTES,
-        msg,
-      );
+if (startupSheetDialog instanceof HTMLDialogElement) {
+  // Prevent pressing Esc from closing the modal before a sheet is chosen
+  startupSheetDialog.addEventListener("cancel", (event) => {
+    if (!activeSheetId) {
+      event.preventDefault();
     }
   });
 }
+
+startupSheetList?.addEventListener("click", (event) => {
+  const btn =
+    event.target instanceof Element
+      ? event.target.closest(".startup-sheet-btn")
+      : null;
+  if (!(btn instanceof HTMLButtonElement)) return;
+  const sheetId = btn.dataset.sheetId;
+  if (sheetId) {
+    openRoomSheet(sheetId);
+  }
+});
+
+startupNewSheetBtn?.addEventListener("click", () => {
+  void createAndOpenNewRoomSheet({ showErrorInStartupModal: true });
+});
 
 if (deleteSheetBtn instanceof HTMLButtonElement) {
   deleteSheetBtn.addEventListener("click", async () => {
@@ -1591,7 +1734,6 @@ if (sheetEl) {
 OBR.onReady(async () => {
   obrConnected = true;
 
-  // Race SRD catalog preload (2.5s cap) so SRD cards hydrate immediately on first paint
   const catalogReady = Promise.race([
     loadCardCatalog(),
     new Promise((resolve) => window.setTimeout(resolve, 2500)),
@@ -1621,42 +1763,11 @@ OBR.onReady(async () => {
 
   roomSheets = await extractRoomSheets(metadata);
   lastRoomBytes = measureMetadataBytes(metadata);
-  activeSheetId = playerId;
 
-  const existingSheet = roomSheets.get(playerId);
-  if (existingSheet) {
-    character = JSON.parse(JSON.stringify(existingSheet));
-    saveLocalState(character);
-    currentSyncStatus = "synced";
-  } else {
-    roomSheets.set(playerId, JSON.parse(JSON.stringify(character)));
-    currentSyncStatus = "saving";
-    renderSyncStatus(
-      "saving",
-      lastRoomBytes,
-      ROOM_METADATA_WARN_BYTES,
-      ROOM_METADATA_LIMIT_BYTES,
-    );
-
-    try {
-      const budget = await saveSheetToRoom(playerId, character);
-      lastRoomBytes = budget.totalBytes;
-      currentSyncStatus = "synced";
-      clearStorageWarning();
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Initial room sync failed";
-      currentSyncStatus = "error";
-      showStorageWarning(msg);
-      renderSyncStatus(
-        "error",
-        lastRoomBytes,
-        ROOM_METADATA_WARN_BYTES,
-        ROOM_METADATA_LIMIT_BYTES,
-        msg,
-      );
-    }
-  }
+  // Do NOT auto-create or duplicate a sheet from localStorage; wait for user selection
+  activeSheetId = "";
+  character = createDefaultCharacter();
+  currentSyncStatus = "synced";
 
   renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
   updateTransferButtons();
@@ -1667,18 +1778,53 @@ OBR.onReady(async () => {
     ROOM_METADATA_LIMIT_BYTES,
   );
   renderFullSheet();
+  openStartupSheetPicker();
 
   OBR.room.onMetadataChange(async (updatedMetadata) => {
     const seq = ++metadataSeq;
     const nextSheets = await extractRoomSheets(updatedMetadata);
-    if (seq !== metadataSeq) return; // Discard stale out-of-order decode
+    if (seq !== metadataSeq) return;
 
     roomSheets = nextSheets;
     lastRoomBytes = measureMetadataBytes(updatedMetadata);
 
-    if (!roomSheets.has(activeSheetId) && roomSheets.size > 0) {
-      const fallbackId = roomSheets.keys().next().value;
-      if (fallbackId) activeSheetId = fallbackId;
+    if (
+      startupSheetDialog instanceof HTMLDialogElement &&
+      startupSheetDialog.open
+    ) {
+      renderStartupSheetPicker();
+    }
+
+    // If the user hasn't picked a sheet yet, don't auto-select one behind the modal
+    if (!activeSheetId) {
+      renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+      updateTransferButtons();
+      renderSyncStatus(
+        currentSyncStatus,
+        lastRoomBytes,
+        ROOM_METADATA_WARN_BYTES,
+        ROOM_METADATA_LIMIT_BYTES,
+      );
+      return;
+    }
+
+    // If the currently viewed sheet was deleted by someone else
+    if (!roomSheets.has(activeSheetId)) {
+      if (roomSheets.size > 0) {
+        const fallbackId = roomSheets.keys().next().value;
+        if (fallbackId) {
+          openRoomSheet(fallbackId);
+          return;
+        }
+      } else {
+        activeSheetId = "";
+        character = createDefaultCharacter();
+        renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
+        updateTransferButtons();
+        renderFullSheet();
+        openStartupSheetPicker();
+        return;
+      }
     }
 
     renderSheetSwitcher(roomSheets, activeSheetId, canManagePartySheets());
@@ -1690,7 +1836,6 @@ OBR.onReady(async () => {
       ROOM_METADATA_LIMIT_BYTES,
     );
 
-    // Don't clobber active typing or an unsynced local draft while a save is queued/retrying
     if (roomSaver.hasPendingSaveFor(activeSheetId)) return;
 
     const remoteSheet = roomSheets.get(activeSheetId);
@@ -1699,12 +1844,10 @@ OBR.onReady(async () => {
     if (JSON.stringify(remoteSheet) === JSON.stringify(character)) return;
 
     character = JSON.parse(JSON.stringify(remoteSheet));
-    saveLocalState(character);
     renderFullSheet();
   });
 
   await refreshTokenHudUI();
-  void syncTokenHudForSheet(activeSheetId, character);
 
   OBR.scene.onReadyChange(async (ready) => {
     await refreshTokenHudUI();

@@ -912,6 +912,38 @@
         </div>
       </div>
     </dialog>
+    <dialog
+      id="startup-sheet-dialog"
+      class="picker-modal startup-dialog"
+      aria-labelledby="startup-dialog-title"
+    >
+      <div class="picker-shell">
+        <header class="picker-header">
+          <div>
+            <h2 id="startup-dialog-title">Choose a Character Sheet</h2>
+            <div class="picker-subrow">
+              <span id="startup-sheet-count" class="room-budget"></span>
+              <span id="startup-room-budget" class="room-budget"></span>
+            </div>
+          </div>
+        </header>
+
+        <div id="startup-sheet-error" class="startup-error hidden" role="alert"></div>
+
+        <div id="startup-sheet-list" class="picker-results startup-sheet-list"></div>
+
+        <footer class="picker-footer">
+          <span class="room-budget">Select a sheet or start a fresh one</span>
+          <button
+            type="button"
+            id="startup-new-sheet-btn"
+            class="small-btn primary-btn"
+          >
+            + Create New Sheet
+          </button>
+        </footer>
+      </div>
+    </dialog>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
