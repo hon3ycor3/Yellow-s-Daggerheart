@@ -95,13 +95,20 @@ function renderPips(containerId, trackName, filledCount, maxCount) {
 }
 
 /**
- * Helper to create a clean feature card for Class, Subclass, or Heritage sections.
+ * Helper to create a clean feature card with a Ping button for Class, Subclass, or Heritage sections.
  * @param {string} title
  * @param {string} tag
  * @param {string} text
  * @param {string} [extraClass]
+ * @param {{ category?: string, accent?: string }} [pingMeta]
  */
-function createFeatureElement(title, tag, text, extraClass = "") {
+function createFeatureElement(
+  title,
+  tag,
+  text,
+  extraClass = "",
+  pingMeta = {},
+) {
   const box = document.createElement("div");
   box.className = extraClass ? `feature-item ${extraClass}` : "feature-item";
 
@@ -122,7 +129,22 @@ function createFeatureElement(title, tag, text, extraClass = "") {
   p.className = "feature-item-text";
   p.textContent = text;
 
-  box.append(header, p);
+  const footer = document.createElement("div");
+  footer.className = "feature-item-footer";
+
+  const pingBtn = document.createElement("button");
+  pingBtn.type = "button";
+  pingBtn.className = "small-btn feature-edit-btn ping-btn feature-ping-btn";
+  pingBtn.dataset.pingCategory = pingMeta.category || "Feature";
+  pingBtn.dataset.pingAccent = pingMeta.accent || "class";
+  pingBtn.dataset.pingTitle = title;
+  pingBtn.dataset.pingTag = tag;
+  pingBtn.dataset.pingText = text;
+  pingBtn.title = `Ping "${title}" to party chat`;
+  pingBtn.innerHTML = `<i class="ra ra-bell" aria-hidden="true"></i> Ping`;
+
+  footer.appendChild(pingBtn);
+  box.append(header, p, footer);
   return box;
 }
 
@@ -349,6 +371,19 @@ function buildCustomHopeFeatureEl(feat, isEditing) {
   editBtn.dataset.hopeId = feat.id;
   editBtn.textContent = "Edit";
 
+  const pingBtn = document.createElement("button");
+  pingBtn.type = "button";
+  pingBtn.className = "small-btn feature-edit-btn ping-btn feature-ping-btn";
+  pingBtn.dataset.pingCategory = "Hope Feature";
+  pingBtn.dataset.pingAccent = "hope";
+  pingBtn.dataset.pingTitle = feat.name || "Untitled Hope Feature";
+  pingBtn.dataset.pingTag = feat.tag || "Hope Feature";
+  pingBtn.dataset.pingText = feat.text || "";
+  pingBtn.title = "Ping this Hope Feature to party chat";
+  pingBtn.innerHTML = `<i class="ra ra-bell" aria-hidden="true"></i> Ping`;
+
+  footer.append(pingBtn, editBtn);
+
   footer.appendChild(editBtn);
   item.append(header, text, footer);
   return item;
@@ -384,12 +419,16 @@ export function renderClassFeatures(character, editingHopeFeatureId = null) {
       "Hope Feature",
       classData.hopeFeature.text,
       "hope-feature",
+      { category: "Hope Feature", accent: "hope" },
     ),
   );
 
   for (const feat of classData.classFeatures) {
     listEl.appendChild(
-      createFeatureElement(feat.name, `${character.className}`, feat.text),
+      createFeatureElement(feat.name, `${character.className}`, feat.text, "", {
+        category: "Class Feature",
+        accent: "class",
+      }),
     );
   }
 
@@ -401,6 +440,7 @@ export function renderClassFeatures(character, editingHopeFeatureId = null) {
           `${subclassName} • ${tier.tierLabel}`,
           feat.text,
           "subclass-feature",
+          { category: "Subclass Feature", accent: "subclass" },
         ),
       );
     }
@@ -461,6 +501,7 @@ export function renderHeritageFeatures(character) {
       `${character.community} Community`,
       community.feature.text,
       "heritage-feature",
+      { category: "Heritage", accent: "heritage" },
     ),
   );
 
@@ -472,6 +513,8 @@ export function renderHeritageFeatures(character) {
         primary.top.name,
         `${character.ancestry} (Top)`,
         primary.top.text,
+        "",
+        { category: "Heritage", accent: "heritage" },
       ),
     );
     listEl.appendChild(
@@ -479,6 +522,8 @@ export function renderHeritageFeatures(character) {
         primary.bottom.name,
         `${character.ancestry} (Bottom)`,
         primary.bottom.text,
+        "",
+        { category: "Heritage", accent: "heritage" },
       ),
     );
   } else {
@@ -488,6 +533,8 @@ export function renderHeritageFeatures(character) {
         primary.top.name,
         `${character.ancestry} (Top)`,
         primary.top.text,
+        "",
+        { category: "Heritage", accent: "heritage" },
       ),
     );
     listEl.appendChild(
@@ -495,6 +542,8 @@ export function renderHeritageFeatures(character) {
         secondary.bottom.name,
         `${character.secondAncestry} (Bottom)`,
         secondary.bottom.text,
+        "",
+        { category: "Heritage", accent: "heritage" },
       ),
     );
 
@@ -543,7 +592,15 @@ export function renderInventory(character) {
     removeBtn.textContent = "×";
     removeBtn.setAttribute("aria-label", "Remove item");
 
-    row.append(input, removeBtn);
+    const pingBtn = document.createElement("button");
+    pingBtn.type = "button";
+    pingBtn.className = "ping-btn ping-icon-btn inv-ping-btn";
+    pingBtn.dataset.invId = item.id;
+    pingBtn.title = "Ping item to party chat";
+    pingBtn.setAttribute("aria-label", "Ping item to party chat");
+    pingBtn.innerHTML = `<i class="ra ra-bell" aria-hidden="true"></i>`;
+
+    row.append(input, pingBtn, removeBtn);
     listEl.appendChild(row);
   }
 }
@@ -656,7 +713,15 @@ export function renderExperiences(character, selectedIds) {
     removeBtn.textContent = "×";
     removeBtn.setAttribute("aria-label", "Remove experience");
 
-    row.append(checkbox, labelInput, bonusInput, removeBtn);
+    const pingBtn = document.createElement("button");
+    pingBtn.type = "button";
+    pingBtn.className = "ping-btn ping-icon-btn exp-ping-btn";
+    pingBtn.dataset.expId = exp.id;
+    pingBtn.title = "Ping experience to party chat";
+    pingBtn.setAttribute("aria-label", "Ping experience to party chat");
+    pingBtn.innerHTML = `<i class="ra ra-bell" aria-hidden="true"></i>`;
+
+    row.append(checkbox, labelInput, bonusInput, pingBtn, removeBtn);
     listEl.appendChild(row);
   }
 
@@ -847,13 +912,24 @@ export function renderDomainCards(character, activeTab, editingIds) {
       title.className = "domain-card-title";
       title.textContent = card.name.trim() || "Untitled Card";
 
+      const topActions = document.createElement("div");
+      topActions.className = "domain-card-top-actions";
+
+      const pingBtn = document.createElement("button");
+      pingBtn.type = "button";
+      pingBtn.className = "small-btn ping-btn card-ping-btn";
+      pingBtn.dataset.cardId = card.id;
+      pingBtn.title = "Ping Domain Card to party chat";
+      pingBtn.innerHTML = `<i class="ra ra-bell" aria-hidden="true"></i> Ping`;
+
       const editBtn = document.createElement("button");
       editBtn.type = "button";
       editBtn.className = "small-btn card-edit-btn";
       editBtn.dataset.cardId = card.id;
       editBtn.textContent = "Edit";
 
-      top.append(title, editBtn);
+      topActions.append(pingBtn, editBtn);
+      top.append(title, topActions);
 
       const meta = document.createElement("div");
       meta.className = "domain-card-meta";

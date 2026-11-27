@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yellow's Daggerheart Chat</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/rpg-awesome/0.2.0/css/rpg-awesome.min.css"
+    />
+  </head>
+  <body class="chat-body">
+    <header class="chat-topbar">
+      <div class="chat-title-wrap">
+        <h1>
+          <i class="ra ra-bell" aria-hidden="true"></i>
+          Party Feed
+        </h1>
+        <span id="chat-status-badge" class="chat-badge">Standalone</span>
+      </div>
+      <div class="chat-controls">
+        <label
+          class="chat-toggle"
+          title="Automatically open this panel when someone pings a feature"
+        >
+          <input id="chat-auto-open" type="checkbox" checked />
+          <span>Auto-open</span>
+        </label>
+        <button
+          type="button"
+          id="chat-clear-btn"
+          class="chat-small-btn"
+          title="Clear local feed"
+        >
+          Clear
+        </button>
+      </div>
+    </header>
+
+    <main id="chat-feed" class="chat-feed" aria-live="polite"></main>
+
+    <form id="chat-form" class="chat-composer">
+      <input
+        id="chat-input"
+        type="text"
+        placeholder="Send a quick note to the table..."
+        autocomplete="off"
+        maxlength="400"
+      />
+      <button type="submit" class="chat-send-btn">Send</button>
+    </form>
+
+    <script type="module" src="/src/chat.js"></script>
+  </body>
+</html>

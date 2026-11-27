@@ -1,0 +1,16 @@
+{
+  "name": "Yellow's Daggerheart Chat",
+  "version": "1.0.0",
+  "author": "Yellow",
+  "description": "Party chat and character feature ping log for Yellow's Daggerheart",
+  "manifest_version": 1,
+  "icon": "/Yellow-s-Daggerheart/chat-icon.svg",
+  "background_url": "/Yellow-s-Daggerheart/chat-bg.html",
+  "action": {
+    "title": "Daggerheart Party Chat",
+    "icon": "/Yellow-s-Daggerheart/chat-icon.svg",
+    "popover": "/Yellow-s-Daggerheart/chat.html",
+    "height": 620,
+    "width": 380
+  }
+}

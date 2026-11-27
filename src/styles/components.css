@@ -523,14 +523,14 @@
 
   .exp-row {
     display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) 56px 26px;
+    grid-template-columns: 20px minmax(0, 1fr) 56px 26px 26px;
     gap: var(--space-2);
     align-items: center;
   }
 
   .inv-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 26px;
+    grid-template-columns: minmax(0, 1fr) 26px 26px;
     gap: var(--space-2);
     align-items: center;
   }
@@ -1041,5 +1041,46 @@
     justify-content: flex-end;
     gap: var(--space-2);
     padding: 0 var(--space-3) var(--space-3);
+  }
+
+  /* Feature Ping buttons */
+  .ping-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .ping-icon-btn {
+    height: 28px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background-color: var(--bg-canvas);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .ping-icon-btn:hover {
+    border-color: var(--accent-border);
+    color: var(--accent-soft);
+  }
+
+  .ping-btn.pinged {
+    border-color: var(--success-border) !important;
+    background-color: var(--success-bg) !important;
+    color: var(--success-text) !important;
+  }
+
+  .domain-card-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
   }
 }

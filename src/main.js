@@ -61,7 +61,7 @@ import {
   rollDualityTrait,
   rollWeaponDamage,
 } from "./roller.js";
-import { loadCardCatalog } from "./cardCatalog.js";
+import { loadCardCatalog, resolveCardDescription } from "./cardCatalog.js";
 import { initCardPicker } from "./cardPicker.js";
 import {
   createHudSyncer,
@@ -71,6 +71,7 @@ import {
   unlinkTokensFromSheet,
 } from "./tokenHud.js";
 import { initOverlayScrollbar } from "./overlayScrollbar.js";
+import { broadcastPartyMessage } from "./pingChannel.js";
 
 let character = loadLocalState();
 const sheetEl = document.getElementById("sheet");
@@ -97,6 +98,8 @@ const importCancelX = document.getElementById("import-cancel-x");
 
 let metadataSeq = 0;
 
+let localPlayerId = "local";
+let localPlayerName = "Player";
 let obrConnected = false;
 let isGM = false;
 // Open party sheet viewing/switching by default; flip via a future GM setting if desired
@@ -1148,6 +1151,30 @@ if (sheetEl) {
     }
   });
 
+  /**
+   * Broadcasts a character feature ping and flashes visual feedback on the clicked button.
+   * @param {HTMLButtonElement} btn
+   * @param {{ category: string, title: string, tag: string, text: string, accent: string }} payload
+   */
+  async function triggerFeaturePing(btn, payload) {
+    try {
+      await broadcastPartyMessage(
+        {
+          kind: "ping",
+          senderId: localPlayerId,
+          senderName: localPlayerName,
+          characterName: character.name.trim() || "Adventurer",
+          ...payload,
+        },
+        obrConnected,
+      );
+      btn.classList.add("pinged");
+      window.setTimeout(() => btn.classList.remove("pinged"), 850);
+    } catch (err) {
+      console.error("[Daggerheart Sheet] Feature ping failed:", err);
+    }
+  }
+
   sheetEl.addEventListener("click", async (event) => {
     const target =
       event.target instanceof Element ? event.target.closest("button") : null;
@@ -1470,6 +1497,57 @@ if (sheetEl) {
       editingHopeFeatureId = null;
       persistCharacter();
       renderClassFeatures(character, editingHopeFeatureId);
+    } else if (target.classList.contains("feature-ping-btn")) {
+      await triggerFeaturePing(target, {
+        category: target.dataset.pingCategory || "Feature",
+        accent: target.dataset.pingAccent || "class",
+        title: target.dataset.pingTitle || "Feature",
+        tag: target.dataset.pingTag || "",
+        text: target.dataset.pingText || "",
+      });
+    } else if (target.classList.contains("exp-ping-btn")) {
+      const exp = character.experiences.find(
+        (item) => item.id === target.dataset.expId,
+      );
+      if (exp) {
+        const sign = exp.bonus >= 0 ? "+" : "";
+        await triggerFeaturePing(target, {
+          category: "Experience",
+          accent: "experience",
+          title: exp.label.trim() || "Unnamed Experience",
+          tag: `Experience • ${sign}${exp.bonus} (1 Hope)`,
+          text: `Spend 1 Hope to add ${sign}${exp.bonus} to an Action Roll.`,
+        });
+      }
+    } else if (target.classList.contains("card-ping-btn")) {
+      const card = character.domainCards.find(
+        (item) => item.id === target.dataset.cardId,
+      );
+      if (card) {
+        const locLabel = card.location === "vault" ? "Vault" : "Loadout";
+        await triggerFeaturePing(target, {
+          category: "Domain Card",
+          accent: card.domain.toLowerCase(),
+          title: card.name.trim() || "Untitled Card",
+          tag: `${card.domain} • Lvl ${card.level} ${card.cardType} • Recall ${card.recallCost} (${locLabel})`,
+          text:
+            resolveCardDescription(card).trim() ||
+            "(No card rules text entered.)",
+        });
+      }
+    } else if (target.classList.contains("inv-ping-btn")) {
+      const item = character.inventory.find(
+        (entry) => entry.id === target.dataset.invId,
+      );
+      if (item && item.text.trim()) {
+        await triggerFeaturePing(target, {
+          category: "Inventory",
+          accent: "inventory",
+          title: item.text.trim(),
+          tag: "Inventory Item",
+          text: "",
+        });
+      }
     } else if (
       target.classList.contains("weapon-damage-btn") &&
       isWeaponSlot(target.dataset.weapon)
@@ -1528,6 +1606,8 @@ OBR.onReady(async () => {
   ]);
 
   isGM = playerRole === "GM";
+  localPlayerId = playerId;
+  localPlayerName = playerName;
 
   if (badgeEl) {
     badgeEl.textContent = playerName;
