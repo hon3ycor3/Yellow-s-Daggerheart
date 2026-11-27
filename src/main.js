@@ -60,13 +60,13 @@ import {
   setRollerModeBadge,
   setRollingState,
   syncExperienceControls,
+  renderClassSheet,
   syncInputs,
 } from "./ui.js";
 import {
   checkDicePlusReady,
   rollDualityTrait,
   rollWeaponDamage,
-  renderClassSheet,
   formatDamageFormula,
 } from "./roller.js";
 import { loadCardCatalog, resolveCardDescription } from "./cardCatalog.js";
