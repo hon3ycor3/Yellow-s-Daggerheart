@@ -13,7 +13,7 @@ body.chat-body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 30em;
+  font-size: 20em;
 }
 
 body.chat-body {
